@@ -1,0 +1,19 @@
+# Builds the Mac version of The Sauce Suite on GitHub's Macs.
+# Download the installer from the run's "Artifacts" section when it finishes.
+name: Build Mac version
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal VST3 + AU, run tests and auval, make the .pkg installer
+        run: bash Build-Mac.command --ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TheSauceSuite-macOS
+          path: dist/*.pkg

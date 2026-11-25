@@ -1,0 +1,49 @@
+THE SAUCE SUITE - WHAT'S NEW
+
+1.4.0 - 2026-11-24
+- Sauce Assistant (new button at the top of the plugin). Tell it the sound you want (a genre, an artist sound, or "Match the beat"), and the part: Lead, Hook, Ad-libs, Backgrounds, Harmonies or Doubles. Then play your beat through the sidechain for 10-20 seconds. It:
+  - measures the beat (how much 808/sub, crowded low mids, where the vocal has room, how bright the hats are, how dense it is), takes the tempo from your DAW and detects the key;
+  - guesses the genre when you choose "Match the beat" and shows how sure it is;
+  - starts from the best matching preset, then tailors it to this beat: high-pass vs the 808, a cut where the beat is crowded (180-600 Hz), a lift in the beat's open spot (1.5-5 kHz), air/de-ess vs the hats, compression vs density, reverb/delay ducking vs busyness, tempo-synced delay, reverb pre-delay and tail, and Auto Tune key;
+  - sets the vocal level against the beat from your actual processed vocal (lead louder, ad-libs and backgrounds tucked under);
+  - explains every change in plain words, has Before/After, and takes feedback: More polished, More raw, Wetter, Drier, Brighter, Darker, Vocal louder/quieter, Harder/Softer tune.
+- Genre and Artist menus now change the sound. Picking a genre loads its Lead preset; picking an artist loads that artist's preset. A pop-up confirms what changed (chain, tune, compression, reverb, delay, grit).
+- Artists are listed only under the genres that fit them: Drake, J. Cole, Rylo Rodriguez and others under Rap/Trap; Bryson Tiller, Tory Lanez, Chris Brown, SZA, Summer Walker and others under R&B; every music genre has its own artists (89 artist-inspired starting points, up from 11, all unofficial).
+- Rearrangeable vocal chain. Drag the module tabs (Gate, Auto Tune, EQ, Match EQ, Vocal FX, Compressor) into any order; the arrows show the signal flow and the Limiter always stays last. The order is saved with presets and DAW sessions, and presets set their own order (e.g. Lo-Fi and Vintage saturate first; Boom Bap, Drill, Rock and Aggressive compress before EQ). Reordering never changes latency. Gear menu > "Reset vocal chain order".
+- 421 factory presets (up from 240). Each music genre now has 18 roles, including Hook (Stadium), Ad-libs (Phone Filter), Ad-libs (Echo Throw), Backgrounds (Airy Pad), Harmonies (Wide) and Intro / Whisper.
+- 96 automated checks (was 62), all passing on Linux and the Windows build.
+
+1.3.3 - 2026-11-24
+- Mac version kit (Build-Mac.command): universal VST3 + Audio Unit and a branded macOS installer. Windows plugin unchanged.
+
+1.3.2 - 2026-11-24
+- New branded setup wizard: Welcome, License, Options, Install and Finish pages in The Sauce Suite look (matte black, neon blue, the dripping logo), with its own app icon.
+- Options: VST3 plugin (required); preset list and quick-start guide in Documents\The Sauce Suite; desktop shortcut to your saved presets.
+- Finish page: "Open FL Studio now" (when FL Studio is found) and "Show what's new".
+- Listed in Windows Apps & features with a proper uninstaller (removes the plugin, guide and shortcut; keeps your own presets).
+- Running Setup again updates an existing install and shows which version you had.
+- Silent switches: /S installs, Uninstall.exe /uninstall /S removes.
+
+1.3.1 - 2026-11-24
+- Fix: "The procedure entry point TaskDialogIndirect could not be located ... ilbridge.exe". The Windows plugin now embeds the Common Controls 6 manifest (resource type 24, ID 2), as Microsoft's compiler does for JUCE plugins. FL Studio's plugin bridge loads it correctly.
+- The plugin's Windows file version now shows the real version (it showed 1.0.0 before).
+- Build-Windows.bat: one-click native build with Microsoft Visual C++ on your own PC. It runs every test there and installs the VST3. JUCE is downloaded as a zip, so Git isn't needed.
+
+1.3.0 - 2026-11-24
+- Latency switch (Meters panel): Mix | Tracking.
+  - Mix: best quality, about 16 ms (762 samples at 48 kHz), fully compensated by the DAW. Use it for mixing.
+  - Tracking: about 0.5 ms reported (24 samples). Breaths, consonants and every module except Auto Tune arrive in 0.5 ms; tuned notes arrive one cycle of the sung note later (2.8 ms at 440 Hz, 5.0 ms at 220 Hz, 7.3 ms at 147 Hz). The limiter has no look-ahead in this mode and still holds the ceiling exactly.
+- Auto Key (Auto Tune page). Detects the song's key from your vocal's pitch, plus the beat's chords when routed to the sidechain, and sets Key/Scale. Follows key changes (about 20 s memory). Turn it off to lock the key. It runs in the background analysis, so it adds 0 ms latency.
+- Presets never change the latency mode or Auto Key.
+- 60 automated checks (was 47).
+
+1.2.0 - 2026-11-24
+- 240 factory presets in 19 genres: Lead, Hook, Ad-libs, Backgrounds and Doubles, plus Clean, Dark, Bright, Spacey, Hard Tune, Vintage and Aggressive leads per genre; 12 creative FX chains.
+- Preset menu grouped by genre.
+- (The 1.2.0 Windows download's READ ME said "1.1" by mistake.)
+
+1.1.0 - 2026-11-24
+- Windows build without Visual Studio (llvm-mingw cross-compile) and TheSauceSuite-Setup.exe installer (install / update / uninstall, /S silent).
+
+1.0.0 - 2026-11-24
+- First release: gate, key-aware Auto Tune, 6-band EQ with live spectrum, Match EQ, compressor, saturation/doubler/width, delay and reverb with independent ducking, limiter, presets, Vocal Coach, beat sidechain.

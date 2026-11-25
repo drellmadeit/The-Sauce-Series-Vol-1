@@ -1,0 +1,6 @@
+// ID 2 = ISOLATIONAWARE_MANIFEST_RESOURCE_ID, RT_MANIFEST = 24.
+// Makes Windows bind this DLL's comctl32 imports (TaskDialogIndirect) to Common Controls 6,
+// exactly what MSVC's /manifestdependency does for JUCE. Without it, hosts such as FL Studio's
+// ilbridge.exe fail with "entry point TaskDialogIndirect could not be located".
+2 24 "plugin.manifest"
+// (Version info comes from JUCE's generated resources, using the CMake project version.)

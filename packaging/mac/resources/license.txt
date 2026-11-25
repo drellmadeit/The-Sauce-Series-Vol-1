@@ -1,0 +1,17 @@
+THE SAUCE SUITE - LICENSE & TERMS
+Copyright (c) 2026 Drellmadeit. All rights reserved.
+
+1. Use. You may install and use The Sauce Suite on your own computers to make music, including music you release or sell. Audio you make with it belongs to you.
+
+2. Sharing. Please don't redistribute, resell or rehost the installer or the plugin without permission from Drellmadeit.
+
+3. Artist-inspired presets. Presets that carry an artist's name are UNOFFICIAL starting points based on how those artists' released vocals commonly sound. They are not affiliated with, sponsored by or endorsed by those artists. They shape your vocal's processing, not your voice.
+
+4. No warranty. The Sauce Suite is provided "as is", without warranty of any kind. Drellmadeit isn't liable for any damages arising from its use. Save your projects often.
+
+5. Third-party software.
+ - JUCE 8 (juce.com), used under its applicable licence.
+ - VST 3 SDK by Steinberg Media Technologies GmbH, MIT licence. VST is a registered trademark of Steinberg Media Technologies GmbH.
+ - Poppins font by the Poppins Project Authors, SIL Open Font License 1.1.
+
+By clicking "I accept these terms" you agree to the above.

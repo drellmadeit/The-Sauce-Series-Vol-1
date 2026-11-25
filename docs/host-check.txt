@@ -1,0 +1,14 @@
+Host check: build/TheSauceSuite_artefacts/Release/VST3/The Sauce Suite.vst3
+  [PASS] VST3 scanned: The Sauce Suite by Drellmadeit, Fx|Dynamics|EQ|Reverb
+  [PASS] instantiated
+     buses: 2 in / 1 out, parameters: 88
+  [PASS] main input + optional sidechain input exposed
+  [PASS] host can enable the stereo sidechain
+     reported latency: 762 samples
+  [PASS] latency reported to the host
+  [PASS] processes audio (output peak -8.0 dBFS, limiter holds it under 0 dBFS)
+  [PASS] sidechain-only input produces a silent output in the host
+  [PASS] editor opens (1376x736)
+  [PASS] editor resizes
+  [PASS] state saved and restored through the VST3 wrapper (88 parameters, 0 mismatches)
+HOST CHECK PASSED

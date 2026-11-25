@@ -1,0 +1,170 @@
+The Sauce Suite 1.4.0 verification (48000 Hz, 512-sample blocks)
+
+1. Pitch correction moves a flat note to the selected scale tone
+     sung 430.12 Hz (-39.3 cents vs A4) -> output 440.22 Hz (0.9 cents vs A4), C major, retune 0 ms
+  [PASS] flat A4 (-40 cents) corrected to within 8 cents of A4
+     F4 +30 cents -> 349.35 Hz (0.6 cents vs F4)
+  [PASS] sharp F4 pulled back to F4
+     D# minor, A#4 -35 cents -> -1.2 cents vs A#4
+  [PASS] key/scale aware: corrected to A#4 in D# minor
+     amount 50% -> -20.4 cents vs A4 (input -40)
+  [PASS] Correction Amount 50% gives partial (subtle) correction
+     breath/consonant noise: correlation with latency-aligned input = 1.0000 (latency 762 samples)
+  [PASS] breaths / unvoiced consonants are preserved (not pitch-processed)
+
+2. Delay and reverb ducking are independent, driven by the dry lead, and tails recover
+     during phrase  delay return: -24.6 dB (0%) vs -60.6 dB (Delay Ducking 100%); reverb unaffected -26.6 vs -26.6 dB
+                    reverb return: -26.6 dB (0%) vs -62.6 dB (Reverb Ducking 100%); delay unaffected -24.6 vs -24.6 dB
+  [PASS] Delay Ducking pulls the delay return down while singing (> 15 dB at 100%)
+  [PASS] ...and leaves the reverb return untouched
+  [PASS] Reverb Ducking pulls the reverb return down while singing
+  [PASS] ...and leaves the delay return untouched
+     in the gap     delay return: -28.9 dB (0%) vs -36.7 dB (100%); reverb tail -32.9 vs -41.0 dB
+  [PASS] delay echoes rise back into the gap after the phrase
+  [PASS] reverb tail rises back into the gap after the phrase
+  [PASS] at 0% the return plays normally
+  [PASS] all ducking runs used a disabled sidechain bus (works with no instrumental)
+
+3. Sidechain audio never leaks into the vocal output
+     silent vocal + loud beat on sidechain (12 s, preset 'Wide Hook Stack'): output peak -200.0 dBFS
+  [PASS] output stays silent while only the sidechain carries audio
+     vocal phrase then silence: last second peak -200.0 dBFS; max difference vs no-sidechain render 0
+  [PASS] after the tails fade, the output is silent despite the beat
+  [PASS] output is bit-identical with and without the beat on the sidechain
+
+4. Match EQ moves the vocal toward the reference and respects the boost/cut limit
+     limit 4 dB: high/mid balance  yours 7.9 dB -> matched 12.2 dB (reference 13.8 dB); curve peak 4.00 dB
+  [PASS] vocal moved toward the reference (limit 4 dB)
+  [PASS] applied curve stays within the max boost/cut limit (4 dB)
+  [PASS] A/B off returns to the un-matched tone
+     limit 12 dB: high/mid balance  yours 7.9 dB -> matched 12.8 dB (reference 13.8 dB); curve peak 4.83 dB
+  [PASS] vocal moved toward the reference (limit 12 dB)
+  [PASS] applied curve stays within the max boost/cut limit (12 dB)
+  [PASS] A/B off returns to the un-matched tone
+
+5. Save As, reload, protected factory presets, and DAW session recall
+  [PASS] factory preset loads
+  [PASS] editing marks the preset as edited
+  [PASS] Save As with a factory name creates 'Melodic Trap Lead (My Version)' instead of overwriting
+  [PASS] Save As 'D-R3LL Hook'
+  [PASS] factory original unchanged after Save As
+  [PASS] user preset reopens with the saved values
+  [PASS] user preset appears under its genre filter
+  [PASS] artist filter shows the Drake-inspired starting point
+  [PASS] every parameter restored after reopening the session (0 mismatches)
+  [PASS] preset name, edited flag and filters restored
+     max sample difference between original and restored instance: 0
+  [PASS] restored session produces the same sound
+
+6. Analyser and Vocal Coach react to the audio and stay quiet without enough signal
+     vocal analyser peak: 990 Hz for a 1 kHz input, 4995 Hz for a 5 kHz input
+  [PASS] vocal spectrum follows the input
+     beat analyser: active=1, peak 117 Hz for a 120 Hz beat tone
+  [PASS] instrumental spectrum (white) shows the routed beat
+  [PASS] silence -> 'Listening' (no diagnosis invented)
+  [PASS] less than ~1.2 s of voice in the window -> still 'Listening'
+     muddy vocal  -> "The vocal sounds boxy: there's a build-up around 320 Hz." / "Try a broad 3 dB cut near 320 Hz (Q 1.0) on the vocal."
+  [PASS] boxy/low-mid build-up is detected and a cut frequency is named
+     sibilant vocal -> "S and T sounds are harsh, peaking around 6.5 kHz." / "Try a narrow 3 dB cut near 6.5 kHz (EQ band 5, Bell, Q 4) and listen to the S's."
+  [PASS] excessive sibilance is detected
+     vocal + beat -> "Your vocal and the beat are competing around 320-400 Hz." / "Try a broad 2 dB cut near 360 Hz on the beat's track and compare."
+  [PASS] vocal/beat competition is named with its frequency range and a beat-side fix
+  [PASS] returns to 'Listening' when the audio stops
+
+7. Every factory preset loads, sounds different, and stays clean and under its ceiling
+     421 factory presets: (artist) 89, Afrobeats 18, Boom Bap 18, Country 18, Dancehall 18, Drill 18, EDM 18, FX & Creative 12, Gospel 18, Indie / Alt 18, Latin / Reggaeton 18, Lo-Fi 18, Melodic Rap 20, Podcast / Voice 7, Pop 18, R&B 20, Rap 19, Rock 18, Trap 19, Trap-Soul 19
+  [PASS] 421 factory presets
+  [PASS] every factory preset has its own settings
+  [PASS] every preset produces clean audio under its limiter ceiling
+
+UI. Picking presets in the plugin window changes the sound and the visible controls
+     preset menu -> 'Drill - Lead (Aggressive)': 22 of 40 on-screen controls moved, processor preset now 'Drill - Lead (Aggressive)'
+  [PASS] choosing a preset in the menu loads it
+  [PASS] the visible knobs follow the loaded preset
+     genre menu -> R&B: preset now 'R&B - Lead'
+
+8. Tracking (low-latency) mode
+     reported latency: Mix 762 samples (15.88 ms) -> Tracking 24 samples (0.50 ms)
+  [PASS] Tracking mode reports under 1 ms to the DAW
+  [PASS] measured delay of breaths/consonants = reported latency (24 samples)
+     440 Hz note, 40 cents flat -> +0.9 cents; tuned notes arrive 2.8 ms after the input (0.5 ms + one cycle)
+  [PASS] Tracking mode still corrects a 440 Hz note
+     220 Hz note, 40 cents flat -> -0.2 cents; tuned notes arrive 5.0 ms after the input (0.5 ms + one cycle)
+  [PASS] Tracking mode still corrects a 220 Hz note
+     147 Hz note, 40 cents flat -> -2.1 cents; tuned notes arrive 7.3 ms after the input (0.5 ms + one cycle)
+  [PASS] Tracking mode still corrects a 147 Hz note
+     +18 dB into a -3 dB ceiling with no look-ahead: output peak -3.00 dBFS
+  [PASS] zero-latency limiter still holds the ceiling
+  [PASS] switching back to Mix restores full latency compensation
+
+9. Auto Key detection (analysis only, no added latency)
+  [PASS] turning Auto Key on does not change latency
+     E minor melody -> plugin set E Minor   [Auto Key: E minor  (95%)]
+  [PASS] E minor detected (or its relative major, same notes)
+     then a Bb major melody -> A# Major   [Auto Key: A# major  (96%)]
+  [PASS] follows a key change to Bb major
+     G major vocal + G major chords on the sidechain -> G Major
+  [PASS] detects the key with the beat routed in
+  [PASS] with Auto Key off the key stays locked
+  [PASS] auto key changes do not count as preset edits
+
+10. Genre/artist menus and the rearrangeable vocal chain
+  [PASS] Drake, J. Cole, Rylo Rodriguez listed under Rap
+  [PASS] Drake and Rylo listed under Trap
+  [PASS] Bryson Tiller, Tory Lanez, Chris Brown, SZA, Summer Walker listed under R&B
+  [PASS] artists don't show up in genres that don't fit them
+  [PASS] every music genre has matching artists
+  [PASS] R&B artist menu shows R&B artists only (22 artists)
+  [PASS] picking Bryson Tiller loads his preset
+  [PASS] switching to Rap swaps the artist list and loads 'Rap - Lead'
+  [PASS] chain can be rearranged (saturation before compression)
+  [PASS] invalid orders are refused
+     comp->sat vs sat->comp: max sample difference 0.275, latency 762 -> 762
+  [PASS] a different order changes the sound
+  [PASS] reordering does not change latency
+  [PASS] chain order saved with the DAW session
+  [PASS] Lo-Fi presets bring their own chain order (saturation first)
+  [PASS] other presets restore the standard order
+
+11. Sauce Assistant: listens to the beat, picks a starting sound, tailors it, explains it
+     145 BPM, heavy 808 + bright hats: sub +21.5, air -0.3, crest 20.6 dB -> guess Trap (54%), then Drill
+  [PASS] heard the beat and the vocal
+  [PASS] fast 808-heavy beat is recognised as trap/drill/rap
+  [PASS] Assistant applied a setup
+     Sounds like Trap (54% sure)  |  145 BPM  |  A major
+     Started from "Trap - Lead" (Lead), then tailored it to this beat:
+       - The beat is crowded around 210 Hz: cut the vocal 4.2 dB there so the two don't fight.
+       - The beat leaves a pocket near 3.6 kHz: lifted the vocal 1.2 dB there so the words cut through.
+       - Bright hi-hats: added a little more vocal air and tamed the S's so they don't stack with the hats.
+       - Open, dynamic beat: eased the compression to keep the vocal natural.
+       - Timed the delay (1/8) and reverb (26 ms pre-delay, tail under 1.0 s) to 145 BPM.
+       - Set Auto Tune to A major (detected from the music).
+       - Keep the beat playing and sing a few lines: the vocal level against the beat gets set in a few seconds.
+  [PASS] started from the guessed genre's preset (Trap - Lead)
+  [PASS] raised the high-pass to clear the 808 (130 Hz)
+  [PASS] delay synced to 1/8 at 145 BPM
+  [PASS] reverb tail kept under one bar
+  [PASS] 7 plain-language explanations
+  [PASS] Before restores the previous sound
+  [PASS] After brings the Assistant's setup back
+  [PASS] feedback buttons move the right controls (wetter, brighter, louder, harder tune)
+     68 BPM, dark and smooth -> guess Trap-Soul, then R&B
+  [PASS] slow dark beat is recognised as R&B / trap-soul / lo-fi
+  [PASS] artist + Backgrounds picks the R&B background preset (R&B Vocal - Polished)
+  [PASS] delay synced to 1/4 at 68 BPM
+     Lead: Assistant's own re-measure after level match: +0.9 dB vs beat (target +1.0)
+  [PASS] level-matching step ran for Lead
+     Ad-libs: Assistant's own re-measure after level match: -5.0 dB vs beat (target -5.0)
+  [PASS] level-matching step ran for Ad-libs
+     vocal vs beat after the Assistant: Trap Lead +0.7 dB, Trap Ad-libs -4.0 dB
+  [PASS] lead sits louder against the beat than ad-libs
+  [PASS] lead and ad-libs land near their target levels against the beat
+  [PASS] without a beat it sets up the vocal alone and explains why
+
+Extra: latency reporting, bypass, mono tracks
+     reported latency 762 samples (15.88 ms); impulse came out 762 samples late
+  [PASS] reported latency matches the measured delay
+  [PASS] bypass passes the vocal through, latency-compensated
+  [PASS] mono vocal track supported
+
+96/96 checks passed

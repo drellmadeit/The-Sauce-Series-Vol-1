@@ -1,0 +1,7 @@
+build/
+build-win/
+build-mac/
+dist/
+*.res
+installer/TheSauceSuite-Setup.exe
+installer/payload/plugin.dll
