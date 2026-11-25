@@ -6,6 +6,7 @@
 #include <complex>
 #include <string>
 #include <deque>
+#include <algorithm>
 #include <cstdio>
 
 namespace sauce
@@ -76,7 +77,9 @@ struct LogGrid
 struct SpectrumAccumulator
 {
     SpectrumAccumulator() : fft (12) { frame.assign (4096, 0.0f); reset(); }
-    void reset() { sum.assign (LogGrid::kPoints, 0.0); frames = 0; fill = 0; std::fill (frame.begin(), frame.end(), 0.0f); }
+    void reset() { sum.assign (LogGrid::kPoints, 0.0); frames = 0; skipped = 0; fill = 0; loudest = -100.0f; std::fill (frame.begin(), frame.end(), 0.0f); }
+    bool voicedOnly = false;      // Match EQ captures: ignore breaths, sibilance, noise and quiet tails
+    int skipped = 0; float loudest = -100.0f;
     void feed (const float* x, int n, double sr)
     {
         for (int i = 0; i < n; ++i)
@@ -99,8 +102,23 @@ private:
     void analyse (double sr)
     {
         double e = 0; for (float v : frame) e += v * v;
-        if (gainToDb ((float) std::sqrt (e / frame.size())) < -50.0f) return;     // skip silence / room tone
+        const float lvl = gainToDb ((float) std::sqrt (e / frame.size()));
+        if (lvl < -50.0f) return;     // skip silence / room tone
+        if (voicedOnly)
+        {
+            // smart capture: only sung, tonal frames count - not breaths, S's, noise or quiet tails
+            loudest = std::max (loudest, lvl);
+            if (lvl < loudest - 18.0f) { ++skipped; return; }
+        }
         fft.power (frame.data(), spec);
+        if (voicedOnly)
+        {
+            const int a = (int) (300.0 * fft.size() / sr), b = std::min ((int) spec.size() - 1, (int) (4000.0 * fft.size() / sr));
+            double lg = 0, ar = 0; int n = 0;
+            for (int k = a; k <= b; ++k) { const double v = std::max (1e-20, (double) spec[(size_t) k]); lg += std::log (v); ar += v; ++n; }
+            const double flat = n > 0 ? std::exp (lg / n) / (ar / n) : 1.0;          // spectral flatness: ~0 tonal, ~1 noise
+            if (flat > 0.45) { ++skipped; return; }
+        }
         for (int i = 0; i < LogGrid::kPoints; ++i)
         {
             const float f = LogGrid::freq (i);
@@ -190,7 +208,12 @@ class VocalCoach
 {
 public:
     struct Message { bool listening = true; int issue = -1; std::string observation, suggestion; };
-    enum Issue { None = -1, Clipping = 0, OutputClip, Masking, Sibilance, LowMid, Uneven, TooQuiet };
+    enum Issue { None = -1, Clipping = 0, OutputClip, Masking, Sibilance, LowMid, Uneven, TooQuiet, RoleLowEnd, RoleTune, RoleWidth };
+    /** What the track is (0 Lead, 1 Hook, 2 Ad-libs, 3 Backgrounds, 4 Harmonies, 5 Doubles) plus a few current settings,
+        so advice fits the part: backgrounds can be darker and steadier, ad-libs thinner and more dynamic, doubles tight, etc. */
+    struct Context { int role = 0; bool tuneOn = false, stereoFx = false, deessOn = true; float hpfHz = 90.0f; };
+    void setContext (const Context& c) { ctx = c; }
+    static const char* roleWord (int r) { static const char* w[] = { "lead vocal", "hook", "ad-libs", "backgrounds", "harmonies", "doubles" }; return w[std::clamp (r, 0, 5)]; }
 
     VocalCoach() : fft (11) { reset(); }
     void prepare (double sampleRate) { sr = sampleRate; reset(); }
@@ -267,6 +290,9 @@ private:
         const double voicedSec = voiced.size() * 1024.0 / sr;
         if (voicedSec < 1.2) { setMessage (Message{}); return; }
 
+        const int role = ctx.role;
+        const bool stack = role == 3 || role == 4 || role == 5;            // backgrounds, harmonies, doubles
+        const std::string forRole = std::string ("For ") + roleWord (role) + ": ";
         std::vector<Candidate> c;
         // 1. input clipping (baked into the recording or the clip gain)
         int clipFrames = 0; float maxIn = 0;
@@ -300,20 +326,25 @@ private:
                 const float lo = bandCentre (bestK), hi = bandCentre (bestK + 1), mid = std::sqrt (lo * hi);
                 c.push_back ({ Masking, 40.0f + best * 3.0f,
                     "Your vocal and the beat are competing around " + range (lo, hi) + ".",
-                    "Try a broad 2 dB cut near " + hz (mid) + " on the beat's track and compare." });
+                    role == 0 || role == 1 ? "Try a broad 2 dB cut near " + hz (mid) + " on the beat's track and compare."
+                                           : forRole + "cut 2-3 dB near " + hz (mid) + " on this track itself - it's a supporting part, so let the beat and the lead keep that range." });
             }
         }
-        // 4. sibilance
+        // 4. sibilance (stacked parts pile up their S's, so they're held to a stricter standard)
+        const float sibThr = stack ? -10.0f : (role == 2 ? -8.0f : -6.0f);
         int sib = 0; float sibPk = -100;
-        for (auto* f : voiced) { if (f->sibDb > -6.0f) ++sib; sibPk = std::max (sibPk, f->sibDb); }
+        for (auto* f : voiced) { if (f->sibDb > sibThr) ++sib; sibPk = std::max (sibPk, f->sibDb); }
         if (sib > (int) voiced.size() / 8)
         {
             float bestF = 7000, bestV = -200; int cnt = 0; float acc[kBands] {};
-            for (auto* f : voiced) if (f->sibDb > -6.0f) { ++cnt; for (int k = 17; k < kBands; ++k) acc[k] += f->v[k]; }
+            for (auto* f : voiced) if (f->sibDb > sibThr) { ++cnt; for (int k = 17; k < kBands; ++k) acc[k] += f->v[k]; }
             for (int k = 17; k < kBands; ++k) if (cnt && acc[k] / cnt > bestV) { bestV = acc[k] / cnt; bestF = bandCentre (k); }
+            std::string sug = stack ? forRole + "S's stack up across layers. Set the De-Esser near " + hz (bestF) + " and lower its threshold 6 dB - these parts can be darker than the lead."
+                            : role == 2 ? forRole + "set the De-Esser near " + hz (bestF) + " and lower its threshold 4 dB, so the S's don't poke out over the lead."
+                            : ctx.deessOn ? "Set the De-Esser frequency near " + hz (bestF) + " and lower its threshold 3-4 dB, then listen to the S's."
+                                          : "Switch the De-Esser on and set it near " + hz (bestF) + ".";
             c.push_back ({ Sibilance, 30.0f + (float) sib * 100.0f / (float) voiced.size(),
-                           "S and T sounds are harsh, peaking around " + hz (bestF) + ".",
-                           "Try a narrow 3 dB cut near " + hz (bestF) + " (EQ band 5, Bell, Q 4) and listen to the S's." });
+                           "S and T sounds are harsh, peaking around " + hz (bestF) + ".", sug });
         }
         // 5. low-mid build-up
         {
@@ -322,31 +353,52 @@ private:
             for (auto* f : voiced) for (int k = 0; k < kBands; ++k) bandAvg[k] += f->v[k] / (float) voiced.size();
             for (int k = 5; k <= 8; ++k) lm += bandAvg[k] / 4.0f;            // 250 - 500 Hz
             for (int k = 11; k <= 15; ++k) pres += bandAvg[k] / 5.0f;        // 1 - 2.5 kHz
-            if (lm - pres > 12.0f)
+            const float lmThr = stack || role == 2 ? 8.0f : 12.0f;
+            if (lm - pres > lmThr)
             {
                 int pk = 5; for (int k = 5; k <= 8; ++k) if (bandAvg[k] > bandAvg[pk]) pk = k;
-                c.push_back ({ LowMid, 20.0f + (lm - pres - 12.0f) * 3.0f,
+                c.push_back ({ LowMid, 20.0f + (lm - pres - lmThr) * 3.0f,
                                "The vocal sounds boxy: there's a build-up around " + hz (bandCentre (pk)) + ".",
-                               "Try a broad 3 dB cut near " + hz (bandCentre (pk)) + " (Q 1.0) on the vocal." });
+                               stack || role == 2 ? forRole + "cut 4 dB near " + hz (bandCentre (pk)) + " - supporting parts should leave the body to the lead."
+                                                  : "Try a broad 3 dB cut near " + hz (bandCentre (pk)) + " (Q 1.0) on the vocal." });
             }
+            // role check: low end on supporting parts thickens the lead
+            float low = 0; for (int k = 0; k <= 2; ++k) low += bandAvg[k] / 3.0f;     // 80-130 Hz
+            if ((stack || role == 2) && low - pres > -4.0f && ctx.hpfHz < 180.0f)
+                c.push_back ({ RoleLowEnd, 35.0f + (low - pres + 4.0f) * 2.0f,
+                               std::string ("These ") + roleWord (role) + " carry a lot of low end, which muddies the lead when they're stacked.",
+                               "Raise EQ band 1 (Low Cut) to " + std::string (role == 2 ? "250-350 Hz" : "200-300 Hz") + "." });
         }
         // 6. uneven level
         {
             double m = 0; for (auto* f : voiced) m += f->leadDb; m /= voiced.size();
             double v = 0; for (auto* f : voiced) v += (f->leadDb - m) * (f->leadDb - m); v = std::sqrt (v / voiced.size());
-            if (v > 4.5)
+            const double unevenThr = stack ? 3.0 : (role == 2 ? 7.0 : 4.5);      // ad-libs are meant to jump out; stacks should be steady
+            if (v > unevenThr)
                 c.push_back ({ Uneven, 15.0f + (float) v * 2.0f, fmt ("Your vocal level jumps around by about %.0f dB between words.", (float) v * 2.0f),
-                               "Lower the Compressor threshold by 4 dB (or raise the ratio to 4:1) and compare." });
+                               stack ? forRole + "keep them steady so they glue: lower the Compressor threshold 6 dB and use a 6:1 ratio."
+                                     : "Lower the Compressor threshold by 4 dB (or raise the ratio to 4:1) and compare." });
             if (m < -32.0)
                 c.push_back ({ TooQuiet, 10.0f, fmt ("The vocal is quiet, averaging about %.0f dBFS.", (float) m),
                                fmt ("Raise INPUT by %.0f dB so the gate and compressor work as intended.", (float) std::round (-22.0 - m)) });
         }
 
+        // role checks that depend on settings
+        if ((role == 4 || role == 5) && ! ctx.tuneOn)
+            c.push_back ({ RoleTune, 32.0f, std::string ("Auto Tune is off on these ") + roleWord (role) + ".",
+                           "Turn Auto Tune on (Retune 10-20 ms) so they lock to the lead's pitch instead of beating against it." });
+        if ((role == 3 || role == 4) && ! ctx.stereoFx)
+            c.push_back ({ RoleWidth, 18.0f, std::string ("These ") + roleWord (role) + " are mono, sitting right on top of the lead.",
+                           "Turn on Width or the Doubler (Vocal FX) so they surround the lead instead of covering it." });
+
         if (c.empty())
         {
             Message ok; ok.listening = false; ok.issue = None;
-            ok.observation = "Nothing stands out. Level, tone and S's are in a healthy range.";
-            ok.suggestion  = "Try a preset or the Delay and Reverb ducking to add space without crowding the words.";
+            ok.observation = std::string ("Nothing stands out for ") + roleWord (role) + ". Level, tone and S's are in a healthy range.";
+            ok.suggestion  = role == 0 ? "Try the Delay and Reverb ducking to add space without crowding the words."
+                           : role == 1 ? "Hooks can take a little more air and a wider doubler than the verses."
+                           : role == 2 ? "Ad-libs: try the Phone Filter or Echo Throw presets, panned off-centre in your mixer."
+                           : "Keep these 6-10 dB under the lead and a little darker so the lead stays in front.";
             setCandidate ({ None, 0.0f, ok.observation, ok.suggestion });
             return;
         }
@@ -374,7 +426,7 @@ private:
 
     double sr = 44100; FFT fft; std::vector<float> spec, lead, beat, in, out; int fill = 0, sinceEval = 0;
     std::deque<Frame> frames; Message current; int pendingIssue = -2, pendingCount = 0; double heldSeconds = 0;
-    float ceil_ = 1.0f; bool limOn_ = true;
+    float ceil_ = 1.0f; bool limOn_ = true; Context ctx;
 };
 
 //==============================================================================

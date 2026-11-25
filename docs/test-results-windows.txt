@@ -1,27 +1,27 @@
 libEGL warning: DRI3 error: Could not get DRI3 device
 libEGL warning: Ensure your X server supports DRI3 to get accelerated rendering
-The Sauce Suite 1.4.0 verification (48000 Hz, 512-sample blocks)
+The Sauce Suite 1.5.0 verification (48000 Hz, 512-sample blocks)
 
 1. Pitch correction moves a flat note to the selected scale tone
      sung 430.12 Hz (-39.3 cents vs A4) -> output 440.22 Hz (0.9 cents vs A4), C major, retune 0 ms
   [PASS] flat A4 (-40 cents) corrected to within 8 cents of A4
      F4 +30 cents -> 349.35 Hz (0.6 cents vs F4)
   [PASS] sharp F4 pulled back to F4
-     D# minor, A#4 -35 cents -> -1.2 cents vs A#4
+     D# minor, A#4 -35 cents -> -1.5 cents vs A#4
   [PASS] key/scale aware: corrected to A#4 in D# minor
      amount 50% -> -20.4 cents vs A4 (input -40)
   [PASS] Correction Amount 50% gives partial (subtle) correction
-     breath/consonant noise: correlation with latency-aligned input = 1.0000 (latency 762 samples)
+     breath/consonant noise: correlation with latency-aligned input = 1.0000 (latency 652 samples)
   [PASS] breaths / unvoiced consonants are preserved (not pitch-processed)
 
 2. Delay and reverb ducking are independent, driven by the dry lead, and tails recover
-     during phrase  delay return: -24.6 dB (0%) vs -60.6 dB (Delay Ducking 100%); reverb unaffected -26.6 vs -26.6 dB
-                    reverb return: -26.6 dB (0%) vs -62.6 dB (Reverb Ducking 100%); delay unaffected -24.6 vs -24.6 dB
+     during phrase  delay return: -24.6 dB (0%) vs -60.6 dB (Delay Ducking 100%); reverb unaffected -26.3 vs -26.6 dB
+                    reverb return: -26.3 dB (0%) vs -62.2 dB (Reverb Ducking 100%); delay unaffected -24.6 vs -24.6 dB
   [PASS] Delay Ducking pulls the delay return down while singing (> 15 dB at 100%)
   [PASS] ...and leaves the reverb return untouched
   [PASS] Reverb Ducking pulls the reverb return down while singing
   [PASS] ...and leaves the delay return untouched
-     in the gap     delay return: -28.9 dB (0%) vs -36.7 dB (100%); reverb tail -32.9 vs -41.0 dB
+     in the gap     delay return: -29.0 dB (0%) vs -36.8 dB (100%); reverb tail -31.7 vs -38.2 dB
   [PASS] delay echoes rise back into the gap after the phrase
   [PASS] reverb tail rises back into the gap after the phrase
   [PASS] at 0% the return plays normally
@@ -35,11 +35,11 @@ The Sauce Suite 1.4.0 verification (48000 Hz, 512-sample blocks)
   [PASS] output is bit-identical with and without the beat on the sidechain
 
 4. Match EQ moves the vocal toward the reference and respects the boost/cut limit
-     limit 4 dB: high/mid balance  yours 7.9 dB -> matched 12.2 dB (reference 13.8 dB); curve peak 4.00 dB
+     limit 4 dB: high/mid balance  yours -21.1 dB -> matched -16.7 dB (reference -15.3 dB); curve peak 4.00 dB
   [PASS] vocal moved toward the reference (limit 4 dB)
   [PASS] applied curve stays within the max boost/cut limit (4 dB)
   [PASS] A/B off returns to the un-matched tone
-     limit 12 dB: high/mid balance  yours 7.9 dB -> matched 12.8 dB (reference 13.8 dB); curve peak 4.83 dB
+     limit 12 dB: high/mid balance  yours -21.1 dB -> matched -15.4 dB (reference -15.3 dB); curve peak 5.62 dB
   [PASS] vocal moved toward the reference (limit 12 dB)
   [PASS] applied curve stays within the max boost/cut limit (12 dB)
   [PASS] A/B off returns to the un-matched tone
@@ -52,7 +52,7 @@ The Sauce Suite 1.4.0 verification (48000 Hz, 512-sample blocks)
   [PASS] factory original unchanged after Save As
   [PASS] user preset reopens with the saved values
   [PASS] user preset appears under its genre filter
-  [PASS] artist filter shows the Drake-inspired starting point
+  [PASS] artist filter shows Drake-inspired Lead, Hook, Ad-libs and Backgrounds
   [PASS] every parameter restored after reopening the session (0 mismatches)
   [PASS] preset name, edited flag and filters restored
      max sample difference between original and restored instance: 0
@@ -67,26 +67,26 @@ The Sauce Suite 1.4.0 verification (48000 Hz, 512-sample blocks)
   [PASS] less than ~1.2 s of voice in the window -> still 'Listening'
      muddy vocal  -> "The vocal sounds boxy: there's a build-up around 320 Hz." / "Try a broad 3 dB cut near 320 Hz (Q 1.0) on the vocal."
   [PASS] boxy/low-mid build-up is detected and a cut frequency is named
-     sibilant vocal -> "S and T sounds are harsh, peaking around 6.5 kHz." / "Try a narrow 3 dB cut near 6.5 kHz (EQ band 5, Bell, Q 4) and listen to the S's."
+     sibilant vocal -> "S and T sounds are harsh, peaking around 6.5 kHz." / "Switch the De-Esser on and set it near 6.5 kHz."
   [PASS] excessive sibilance is detected
      vocal + beat -> "Your vocal and the beat are competing around 320-400 Hz." / "Try a broad 2 dB cut near 360 Hz on the beat's track and compare."
   [PASS] vocal/beat competition is named with its frequency range and a beat-side fix
   [PASS] returns to 'Listening' when the audio stops
 
 7. Every factory preset loads, sounds different, and stays clean and under its ceiling
-     421 factory presets: (artist) 89, Afrobeats 18, Boom Bap 18, Country 18, Dancehall 18, Drill 18, EDM 18, FX & Creative 12, Gospel 18, Indie / Alt 18, Latin / Reggaeton 18, Lo-Fi 18, Melodic Rap 20, Podcast / Voice 7, Pop 18, R&B 20, Rap 19, Rock 18, Trap 19, Trap-Soul 19
-  [PASS] 421 factory presets
+     943 factory presets: (artist) 608, Afrobeats 18, Boom Bap 18, Country 18, Dancehall 18, Drill 18, EDM 18, FX & Creative 15, Gospel 18, Indie / Alt 18, Latin / Reggaeton 18, Lo-Fi 18, Melodic Rap 20, Podcast / Voice 7, Pop 18, R&B 20, Rap 19, Rock 18, Trap 19, Trap-Soul 19
+  [PASS] 943 factory presets
   [PASS] every factory preset has its own settings
   [PASS] every preset produces clean audio under its limiter ceiling
 
 UI. Picking presets in the plugin window changes the sound and the visible controls
-     preset menu -> 'Drill - Lead (Aggressive)': 22 of 40 on-screen controls moved, processor preset now 'Drill - Lead (Aggressive)'
+     preset menu -> 'Drill - Lead (Aggressive)': 22 of 56 on-screen controls moved, processor preset now 'Drill - Lead (Aggressive)'
   [PASS] choosing a preset in the menu loads it
   [PASS] the visible knobs follow the loaded preset
      genre menu -> R&B: preset now 'R&B - Lead'
 
 8. Tracking (low-latency) mode
-     reported latency: Mix 762 samples (15.88 ms) -> Tracking 24 samples (0.50 ms)
+     reported latency: Mix 652 samples (13.58 ms) -> Tracking 24 samples (0.50 ms)
   [PASS] Tracking mode reports under 1 ms to the DAW
   [PASS] measured delay of breaths/consonants = reported latency (24 samples)
      440 Hz note, 40 cents flat -> +0.9 cents; tuned notes arrive 2.8 ms after the input (0.5 ms + one cycle)
@@ -116,15 +116,16 @@ UI. Picking presets in the plugin window changes the sound and the visible contr
   [PASS] Bryson Tiller, Tory Lanez, Chris Brown, SZA, Summer Walker listed under R&B
   [PASS] artists don't show up in genres that don't fit them
   [PASS] every music genre has matching artists
-  [PASS] R&B artist menu shows R&B artists only (22 artists)
+  [PASS] R&B artist menu shows R&B artists only (33 artists)
   [PASS] picking Bryson Tiller loads his preset
   [PASS] switching to Rap swaps the artist list and loads 'Rap - Lead'
   [PASS] chain can be rearranged (saturation before compression)
   [PASS] invalid orders are refused
-     comp->sat vs sat->comp: max sample difference 0.275, latency 762 -> 762
+     comp->sat vs sat->comp: max sample difference 0.309, latency 652 -> 652
   [PASS] a different order changes the sound
   [PASS] reordering does not change latency
   [PASS] chain order saved with the DAW session
+  [PASS] 1.4 sessions/presets upgrade to the 11-module chain (GPTSEMCDYRL)
   [PASS] Lo-Fi presets bring their own chain order (saturation first)
   [PASS] other presets restore the standard order
 
@@ -139,6 +140,7 @@ UI. Picking presets in the plugin window changes the sound and the visible contr
        - The beat leaves a pocket near 3.6 kHz: lifted the vocal 1.2 dB there so the words cut through.
        - Bright hi-hats: added a little more vocal air and tamed the S's so they don't stack with the hats.
        - Open, dynamic beat: eased the compression to keep the vocal natural.
+       - Clash: vocal and beat both peak in the body (150-300 Hz). Vocal cut there already; a 2 dB dip on the beat helps more.
        - Timed the delay (1/8) and reverb (26 ms pre-delay, tail under 1.0 s) to 145 BPM.
        - Set Auto Tune to A major (detected from the music).
        - Keep the beat playing and sing a few lines: the vocal level against the beat gets set in a few seconds.
@@ -146,7 +148,7 @@ UI. Picking presets in the plugin window changes the sound and the visible contr
   [PASS] raised the high-pass to clear the 808 (130 Hz)
   [PASS] delay synced to 1/8 at 145 BPM
   [PASS] reverb tail kept under one bar
-  [PASS] 7 plain-language explanations
+  [PASS] 8 plain-language explanations
   [PASS] Before restores the previous sound
   [PASS] After brings the Assistant's setup back
   [PASS] feedback buttons move the right controls (wetter, brighter, louder, harder tune)
@@ -158,18 +160,67 @@ UI. Picking presets in the plugin window changes the sound and the visible contr
   [PASS] level-matching step ran for Lead
      Ad-libs: Assistant's own re-measure after level match: -5.0 dB vs beat (target -5.0)
   [PASS] level-matching step ran for Ad-libs
-     vocal vs beat after the Assistant: Trap Lead +0.7 dB, Trap Ad-libs -4.0 dB
+     vocal vs beat after the Assistant: Trap Lead +0.9 dB, Trap Ad-libs -4.2 dB
   [PASS] lead sits louder against the beat than ad-libs
   [PASS] lead and ad-libs land near their target levels against the beat
   [PASS] without a beat it sets up the vocal alone and explains why
 
+12. Serial chain (every module in tab order) and the new modules
+     delay->reverb vs reverb->delay: max difference 0.383
+  [PASS] Delay and Reverb run in tab order (swapping them changes the sound)
+  [PASS] every order keeps the same latency (13.6 ms)
+     ceiling -12 dB: limiter last -> peak -12.00 dB, limiter before reverb -> peak 0.01 dB
+  [PASS] limiter last: nothing goes over the ceiling (now down to -30 dB)
+  [PASS] limiter moved before the reverb: the reverb comes after it
+     limiter drive 0 -> 12 dB: -23.6 -> -11.4 dB RMS; Loud character -11.5 dB RMS
+  [PASS] Drive pushes the vocal louder into the limiter
+  [PASS] Loud character keeps or adds loudness
+     de-esser: S bursts down 5.6 dB, vowels down 0.0 dB
+  [PASS] De-esser tames S's without touching the vowels
+     De-Pop: plosive peaks -4.6 -> -8.9 dB; low male vowel -19.8 -> -19.8 dB
+  [PASS] De-Pop pulls P/B pops down
+  [PASS] De-Pop leaves a normal deep vowel alone
+     pitch swing: singer's own vibrato 46 c | tuned, Smoothness 0% 74 c, 100% 55 c (centre +1 c) | hard tune 46 c
+  [PASS] Smoothness keeps the singer's natural vibrato (no chasing wobble)
+  [PASS] ...while the note's centre is still pulled in tune
+  [PASS] hard-tune speed ignores Smoothness (stays robotic)
+  [PASS] presets keep their 6 bands (bands 7-12 stay off)
+  [PASS] band 10 of 12 works (+6.0 dB at 1 kHz)
+     dynamic band (-9 dB above -30 dB): quiet tone -3.0 dB, loud tone -12.0 dB
+  [PASS] dynamic EQ band only cuts when the band gets loud
+     resonance suppressor: ringing 3.15 kHz down 5.6 dB, 800 Hz down 1.1 dB
+  [PASS] resonance suppressor dips the ringing frequency and leaves the rest
+     Mix-mode latency: 13.6 ms (was 15.9 ms in 1.4)
+  [PASS] Mix latency trimmed (new modules add none)
+
+13. Track Link, beat files, track roles and the 1.5 preset bank
+  [PASS] sending track reports 0 latency
+  [PASS] the beat track shows up in the LINK list by its DAW track name
+  [PASS] the sending track's audio is untouched
+  [PASS] the vocal instance hears the linked beat with no sidechain routing
+  [PASS] the Assistant measures the linked beat (7.9 s)
+  [PASS] switching Send off restores normal processing latency
+  [PASS] a dropped beat file is analysed (7.9 s, no key)
+  [PASS] the Assistant tailors the chain from the file
+  [PASS] role from preset: 'Trap - Ad-libs' -> Ad-libs
+  [PASS] role from DAW track name: 'BG Vox' -> Backgrounds (from the track name "BG Vox")
+  [PASS] you can set the role yourself (Doubles)
+  [PASS] the role choice is saved with the session
+     Coach (lead):        The vocal sounds boxy: there's a build-up around 250 Hz. / Try a broad 3 dB cut near 250 Hz (Q 1.0) on the vocal.
+     Coach (backgrounds): These backgrounds carry a lot of low end, which muddies the lead when they're stacked. / Raise EQ band 1 (Low Cut) to 200-300 Hz.
+  [PASS] the Vocal Coach gives part-specific advice
+     943 factory presets; 152 artists
+  [PASS] 943 factory presets
+  [PASS] every artist has Lead, Hook, Ad-libs and Backgrounds presets
+  [PASS] every music genre has at least 10 artists 
+
 Extra: latency reporting, bypass, mono tracks
-     reported latency 762 samples (15.88 ms); impulse came out 762 samples late
+     reported latency 652 samples (13.58 ms); impulse came out 652 samples late
   [PASS] reported latency matches the measured delay
   [PASS] bypass passes the vocal through, latency-compensated
   [PASS] mono vocal track supported
 
-96/96 checks passed
+130/130 checks passed
 X connection to :99 broken (explicit kill or server shutdown).
 X connection to :99 broken (explicit kill or server shutdown).
 X connection to :99 broken (explicit kill or server shutdown).

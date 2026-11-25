@@ -15,8 +15,8 @@ private:
     PresetSelectors selectors;
     IconButton pencil { "pencil" };
     juce::ComboBox role; std::unique_ptr<ComboAtt> roleAtt;
-    juce::TextButton help { "How to route" };
-    bool receiving = false, connected = false; int roleIdx = 0; float level = -120;
+    juce::TextButton help { "?" }, linkBtn { "LINK" };
+    bool receiving = false, connected = false, linked = false; int roleIdx = 0, sendMode = 0; float level = -120;
 };
 
 class VocalCoachPanel : public juce::Component
@@ -24,11 +24,13 @@ class VocalCoachPanel : public juce::Component
 public:
     explicit VocalCoachPanel (SauceProcessor& p) : proc (p) {}
     void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
     void tick();
 private:
     SauceProcessor& proc;
     sauce::VocalCoach::Message msg;
-    int dots = 0;
+    int dots = 0, shownRole = -1;
+    juce::Rectangle<float> chip;
 };
 
 class MetersPanel : public juce::Component

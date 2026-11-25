@@ -51,6 +51,10 @@ public:
     void assistantStop() { assistListening.store (false); }
     bool assistantIsListening() const { return assistListening.load(); }
     sauce::AssistantInput assistantSnapshot() const;          // spectra + levels gathered so far (bpm/key filled by the caller)
+    /** Analyses an instrumental file (drag & drop) so the Assistant can work without any routing. Any thread. */
+    bool loadBeatFile (const juce::File& f, juce::String& error);
+    juce::String beatFileName() const { const juce::ScopedLock sl (lock); return fileBeatName; }
+    void clearBeatFile() { const juce::ScopedLock sl (lock); fileBeatName.clear(); fileBeatSpec.clear(); }
 
     // ---- Auto Key (analysis only; never in the audio path) ----
     sauce::KeyDetector::Estimate getKeyEstimate() const;
@@ -93,6 +97,8 @@ private:
     sauce::KeyDetector keyDetector;
     std::atomic<bool> assistListening { false };
     sauce::SpectrumAccumulator assistBeat, assistVocal;
+    std::vector<float> fileBeatSpec; float fileBeatRms = -100, fileBeatPeak = -100; double fileBeatSec = 0; juce::String fileBeatName;
+    sauce::KeyDetector::Estimate fileKey;
     double assistBeatPow = 0, assistVocalPow = 0; float assistBeatPeak = 0; int64_t assistBeatN = 0, assistVocalN = 0;
 
     mutable juce::CriticalSection lock;     // guards display + match + coach data between this thread and the GUI

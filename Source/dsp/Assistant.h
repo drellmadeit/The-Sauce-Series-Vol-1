@@ -17,6 +17,7 @@ struct AssistantInput
     double beatSeconds = 0, vocalSeconds = 0;
     double bpm = 0;                                  // from the DAW (0 = unknown)
     bool keyValid = false; int key = 0; bool minor = false;
+    bool beatFromFile = false;                       // beat measured from a dropped file instead of live audio
 };
 
 enum class Role { Lead = 0, Hook, Adlibs, Backgrounds, Harmonies, Doubles };
@@ -186,6 +187,31 @@ public:
             }
         }
 
+        // 6b. clash check: where your vocal and the beat are BOTH strong (masking), beyond what was fixed above
+        if (in.hasBeat && in.hasVocal && (int) in.vocalSpec.size() == LogGrid::kPoints)
+        {
+            const float vref = band (in.vocalSpec, 150, 5000), bref = band (in.beatSpec, 150, 5000);
+            struct Z { float lo, hi; const char* what; };
+            static const Z zones[] = { { 150, 300, "body (150-300 Hz)" }, { 300, 700, "low mids / boxiness (300-700 Hz)" },
+                                       { 700, 1500, "mids / nasal (0.7-1.5 kHz)" }, { 1500, 3500, "presence / words (1.5-3.5 kHz)" },
+                                       { 3500, 7000, "bite / edge (3.5-7 kHz)" } };
+            float worstScore = -100; const Z* worstZ = nullptr;
+            for (auto& z : zones)
+            {
+                const float v = band (in.vocalSpec, z.lo, z.hi) - vref, b = band (in.beatSpec, z.lo, z.hi) - bref;
+                const float score = std::min (v, b);          // both above their own average = they fight here
+                if (score > worstScore) { worstScore = score; worstZ = &z; }
+            }
+            if (worstZ != nullptr && worstScore > -1.0f)
+            {
+                std::snprintf (buf, sizeof buf, "Clash: vocal and beat both peak in the %s. %s", worstZ->what,
+                               worstZ->lo >= 1500 ? "Dip that range 2-3 dB on the beat's track."
+                                                  : "Vocal cut there already; a 2 dB dip on the beat helps more.");
+                p.notes.push_back (buf);
+            }
+            else p.notes.push_back ("Clash: none - your vocal and the beat share the space well.");
+        }
+
         // 7. tempo-aware delay and reverb
         if (in.bpm > 30)
         {
@@ -210,7 +236,7 @@ public:
             p.notes.push_back (buf);
         }
         if (! in.hasBeat)
-            p.notes.push_back ("No beat on the sidechain: tuned for your vocal only. Route the beat in for beat-aware EQ and level.");
+            p.notes.push_back ("No beat heard: tuned for your vocal only. Drop your beat file on the Assistant, link the beat track, or route it to the sidechain for beat-aware EQ and level.");
         return p;
     }
 

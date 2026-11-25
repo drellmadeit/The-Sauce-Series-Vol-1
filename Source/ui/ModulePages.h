@@ -13,10 +13,8 @@ public:
     }
     void paint (juce::Graphics& g) override
     {
-        g.setColour (SauceColours::neonHi); g.setFont (SauceFonts::bold (26.0f));
         const int tx = power ? 80 : 28;
-        g.drawText (titleText, tx, 6, 300, 34, juce::Justification::centredLeft);
-        const int tw = (int) juce::GlyphArrangement::getStringWidth (SauceFonts::bold (26.0f), titleText);
+        const int tw = (int) SauceDraw::tagText (g, titleText, (float) tx, 33.0f, 28.0f, false);
         g.setColour (SauceColours::text); g.setFont (SauceFonts::medium (17.0f));
         g.drawText (subText, tx + tw + 14, 6, 600, 34, juce::Justification::centredLeft);
         paintContent (g);
@@ -59,20 +57,26 @@ private:
     juce::ComboBox key, scale; std::unique_ptr<ComboAtt> keyAtt, scaleAtt;
     juce::TextButton natural { "Natural" }, hard { "Hard Tune" }, autoKey { "Auto Key" };
     std::unique_ptr<ButtonAtt> autoKeyAtt;
-    Knob speed, amount, humanize;
+    Knob speed, amount, humanize, smooth;
     float viewCentre = 60.0f;
 };
 
-class MatchPage : public ModulePage
+class MatchPage : public ModulePage, public juce::FileDragAndDropTarget
 {
 public:
     MatchPage (SauceProcessor&, const UiState&);
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray&, int, int) override { dragOver = true; repaint(); }
+    void fileDragExit (const juce::StringArray&) override { dragOver = false; repaint(); }
+    void filesDropped (const juce::StringArray& files, int, int) override;
+    void paintOverChildren (juce::Graphics&) override;
     void paintContent (juce::Graphics&) override;
     void layoutContent() override;
     void tick() override;
 private:
-    juce::TextButton capMine { "Capture My Vocal" }, capRef { "Capture Reference (Sidechain)" }, loadRef { "Load Reference Vocal File..." },
-                     apply { "Apply Match" }, ab { "A/B" }, reset { "Reset" };
+    juce::TextButton capMine { "Capture My Vocal" }, capRef { "Capture Reference (Sidechain / Link)" }, loadRef { "Load / Drop Reference File..." },
+                     apply { "Apply Match" }, ab { "A/B" }, reset { "Reset" }, linkBtn { "Link a reference track..." };
+    bool dragOver = false;
     std::unique_ptr<ButtonAtt> abAtt;
     Knob strength, smooth, limit;
     std::unique_ptr<juce::FileChooser> chooser;
@@ -111,5 +115,29 @@ public:
     void layoutContent() override;
     void tick() override { repaint(); }
 private:
-    Knob ceiling, release;
+    Knob drive, ceiling, release;
+    juce::ComboBox character; std::unique_ptr<ComboAtt> characterAtt;
+};
+
+class DeessPage : public ModulePage
+{
+public:
+    DeessPage (SauceProcessor&, const UiState&);
+    void paintContent (juce::Graphics&) override;
+    void layoutContent() override;
+    void tick() override { repaint(); }
+private:
+    Knob freq, thresh, range;
+    juce::TextButton listen { "Listen" }; std::unique_ptr<ButtonAtt> listenAtt;
+};
+
+class PlosivePage : public ModulePage
+{
+public:
+    PlosivePage (SauceProcessor&, const UiState&);
+    void paintContent (juce::Graphics&) override;
+    void layoutContent() override;
+    void tick() override { repaint(); }
+private:
+    Knob sens, freq, depth;
 };

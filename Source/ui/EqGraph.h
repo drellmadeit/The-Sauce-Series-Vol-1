@@ -63,6 +63,7 @@ private:
     float param (int band, const char* what) const;
     void setParam (int band, const char* what, float realValue);
     juce::Point<float> nodePos (int band) const;
+    bool isShown (int b) const { return b < 6 || param (b, "on") > 0.5f; }
     juce::Path spectrumPath (const std::vector<float>&, juce::Rectangle<float>) const;
 };
 
@@ -85,7 +86,11 @@ private:
     std::unique_ptr<PowerButton> eqPower;
     juce::TextButton abBtn { "A/B" };
     juce::ComboBox bandBox, typeBox;
-    InlineKnob freqK { "Freq" }, gainK { "Gain" }, qK { "Q" };
+    InlineKnob freqK { "Freq" }, gainK { "Gain" }, qK { "Q" }, dynK { "Dyn" }, thrK { "Thr" };
+    juce::TextButton resBtn { "RESONANCE" }, resDelta { "Delta" };
+    std::unique_ptr<PowerButton> resPower; std::unique_ptr<ButtonAtt> resDeltaAtt;
+    InlineKnob resDepthK { "Depth" }, resSharpK { "Sharp" }, resSelK { "Select" }, resSpeedK { "Speed" }, resLoK { "Low" }, resHiK { "High" };
+    bool showRes = false;
     IconButton bandSolo { "headphones", false, true }, bandTrash { "trash" };
     std::unique_ptr<PowerButton> bandPower;
     std::unique_ptr<ComboAtt> typeAtt;

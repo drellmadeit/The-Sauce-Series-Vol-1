@@ -1,4 +1,5 @@
 #include "AssistantPanel.h"
+#include "LinkMenu.h"
 
 using namespace juce;
 
@@ -33,6 +34,18 @@ AssistantPanel::AssistantPanel (SauceProcessor& p) : proc (p)
     closeBtn.onClick = [this] { proc.analysis.assistantStop(); listenBtn.setToggleState (false, dontSendNotification); setVisible (false); if (onClose) onClose(); };
     routeBtn.getProperties().set ("fontScale", 0.42f);
     routeBtn.onClick = [this] { if (onRoutingHelp) onRoutingHelp(); };
+    linkBtn.getProperties().set ("fontScale", 0.42f);
+    linkBtn.setTooltip ("Hear the beat track without sidechain routing: put The Sauce Suite on the beat track, choose Send there, then pick it here");
+    linkBtn.onClick = [this] { LinkMenu::show (proc, &linkBtn, [this] { refreshStatus(); }); };
+    fileBtn.getProperties().set ("fontScale", 0.42f);
+    fileBtn.setTooltip ("Analyse your instrumental from a file (WAV, MP3, FLAC, AIFF, OGG). You can also drag the file onto this window.");
+    fileBtn.onClick = [this]
+    {
+        chooser = std::make_unique<FileChooser> ("Choose your instrumental", File(), "*.wav;*.mp3;*.flac;*.aif;*.aiff;*.ogg");
+        chooser->launchAsync (FileBrowserComponent::openMode | FileBrowserComponent::canSelectFiles,
+                              [this] (const FileChooser& fc) { if (fc.getResult().existsAsFile()) loadBeatFile (fc.getResult()); });
+    };
+    addAndMakeVisible (linkBtn); addAndMakeVisible (fileBtn);
     ab.onChange = [this] (int i) { proc.assistant.showBefore (i == 0); repaint(); };
     ab.setTooltip ("Compare your sound before the Assistant with what it made");
     for (auto* c : { (Component*) &listenBtn, (Component*) &applyBtn, (Component*) &closeBtn, (Component*) &routeBtn, (Component*) &ab }) addAndMakeVisible (c);
@@ -48,6 +61,38 @@ AssistantPanel::AssistantPanel (SauceProcessor& p) : proc (p)
         b->onClick = [this, n = n] { proc.assistant.nudge (n); ab.setIndex (1); repaint(); };
         addAndMakeVisible (b);
     }
+}
+
+bool AssistantPanel::isInterestedInFileDrag (const StringArray& files)
+{
+    for (auto& f : files) if (File (f).hasFileExtension ("wav;mp3;flac;aif;aiff;ogg")) return true;
+    return false;
+}
+
+void AssistantPanel::filesDropped (const StringArray& files, int, int)
+{
+    dragOver = false;
+    for (auto& f : files) if (File (f).hasFileExtension ("wav;mp3;flac;aif;aiff;ogg")) { loadBeatFile (File (f)); break; }
+    repaint();
+}
+
+void AssistantPanel::loadBeatFile (const File& f)
+{
+    fileStatus = "Analysing " + f.getFileName() + "...";
+    repaint();
+    Component::SafePointer<AssistantPanel> safe (this);
+    auto* engine = &proc.analysis;
+    Thread::launch ([safe, engine, f]
+    {
+        String err;
+        const bool ok = engine->loadBeatFile (f, err);
+        MessageManager::callAsync ([safe, ok, err, name = f.getFileName()]
+        {
+            if (safe == nullptr) return;
+            safe->fileStatus = ok ? "Beat file: " + name : err;
+            safe->refreshStatus();
+        });
+    });
 }
 
 void AssistantPanel::fillArtists()
@@ -84,7 +129,7 @@ void AssistantPanel::refreshStatus()
     lastIn = proc.assistant.gather();
     guess = proc.assistant.isMatchingLevel() ? String ("Measuring your vocal against the beat to set the level...") : proc.assistant.guessText (lastIn);
     if (proc.assistant.hasResult()) ab.setIndex (proc.assistant.isShowingBefore() ? 0 : 1);
-    const bool enough = lastIn.hasBeat || lastIn.hasVocal || lastIn.bpm > 0;
+    const bool enough = lastIn.hasBeat || lastIn.hasVocal || lastIn.bpm > 0 || proc.analysis.beatFileName().isNotEmpty();
     applyBtn.setEnabled (enough);
     listenBtn.setButtonText (proc.assistant.isMatchingLevel() ? "Matching level..." : listenBtn.getToggleState() ? "Stop listening" : "Start listening");
     ab.setVisible (proc.assistant.hasResult());
@@ -99,10 +144,10 @@ void AssistantPanel::paint (Graphics& g)
     SauceDraw::panel (g, r.reduced (8), 16);
     SauceDraw::neonRoundedRect (g, r.reduced (8), 16, SauceColours::neon, 1.6f, 10);
     g.setColour (SauceColours::neonHi); g.strokePath (SauceDraw::icon ("fx", { 34, 26, 30, 30 }), PathStrokeType (2.0f));
-    g.setFont (SauceFonts::bold (26.0f)); g.setColour (SauceColours::text);
-    g.drawText ("SAUCE ASSISTANT", 76, 22, 400, 36, Justification::centredLeft);
+    SauceDraw::tagText (g, "SAUCE ASSISTANT", 76, 52, 32.0f);
+    SauceDraw::splatter (g, { r.getRight() - 60, r.getBottom() - 40 }, 50, SauceColours::spray, 7);
     g.setFont (SauceFonts::regular (14.0f)); g.setColour (SauceColours::textDim);
-    g.drawText ("Tell it the sound you want, play your beat, and it sets up a chain that sits your vocal in this mix.", 34, 58, 900, 22, Justification::centredLeft);
+    g.drawText ("Tell it the sound you want, play your beat, and it sets up a chain that sits your vocal in this mix.", 560, 34, 760, 22, Justification::centredLeft);
 
     auto stepTitle = [&] (int n, const String& t, float x, float y)
     {
@@ -116,7 +161,7 @@ void AssistantPanel::paint (Graphics& g)
     g.drawText ("Artist sound (unofficial)", 34, 192, 300, 20, Justification::centredLeft);
     g.drawText ("Which part are you recording?", 34, 252, 300, 20, Justification::centredLeft);
 
-    stepTitle (2, "Play your beat (and sing if you like)", 34, 324);
+    stepTitle (2, "Play, link or drop your beat (and sing if you like)", 34, 324);
     g.setFont (SauceFonts::regular (14.0f));
     auto line = [&] (float y, const String& label, const String& value, bool ok)
     {
@@ -126,7 +171,13 @@ void AssistantPanel::paint (Graphics& g)
     };
     static const char* keys[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
     const bool rx = proc.analysis.isReceivingSidechain() && (int) proc.reader.get (ParamIDs::scRole) == 0;
-    line (410, "Beat", lastIn.beatSeconds > 0 ? String (lastIn.beatSeconds, 1) + " s heard" : (rx ? (proc.analysis.assistantIsListening() ? "receiving - press play" : "receiving - press Start") : "not routed to the sidechain"), lastIn.hasBeat);
+    const String linkNote = proc.isLinkReceiving() ? " (linked)" : "";
+    const String beatLine = lastIn.beatFromFile ? fileStatus
+                          : lastIn.beatSeconds > 0 ? String (lastIn.beatSeconds, 1) + " s heard" + linkNote
+                          : fileStatus.isNotEmpty() ? fileStatus
+                          : (rx ? (proc.analysis.assistantIsListening() ? "receiving - press play" : "receiving - press Start") + linkNote
+                                : String ("drop the file, link it, or route it"));
+    line (410, "Beat", beatLine, lastIn.hasBeat);
     line (434, "Vocal", lastIn.vocalSeconds > 0 ? String (lastIn.vocalSeconds, 1) + " s heard" : "optional", lastIn.hasVocal);
     line (458, "Tempo", lastIn.bpm > 0 ? String (roundToInt (lastIn.bpm)) + " BPM (from your DAW)" : "unknown", lastIn.bpm > 0);
     line (482, "Key", lastIn.keyValid ? String (keys[lastIn.key]) + (lastIn.minor ? " minor" : " major") : "listening...", lastIn.keyValid);
@@ -144,7 +195,8 @@ void AssistantPanel::paint (Graphics& g)
     {
         g.setColour (SauceColours::textDim); g.setFont (SauceFonts::regular (14.5f));
         g.drawFittedText ("1. Pick a genre, an artist sound and the part you're recording (or leave it on \"Match the beat\").\n"
-                          "2. Route your beat to the sidechain, press Start listening and play 10-20 seconds of the song.\n"
+                          "2. Get the beat in: drag your beat file onto this window, OR link the beat track (no routing), OR use the sidechain. "
+                          "Press Start listening and play 10-20 seconds (sing along for level matching).\n"
                           "3. Press \"Make it sit in the mix\". You can A/B it and fine-tune it with the feedback buttons.",
                           tb.toNearestInt(), Justification::topLeft, 8);
     }
@@ -162,6 +214,16 @@ void AssistantPanel::paint (Graphics& g)
     }
     g.setColour (SauceColours::textDim); g.setFont (SauceFonts::medium (14.0f));
     g.drawText ("Fine-tune it:", (int) res.getX(), 482, 120, 22, Justification::centredLeft);
+    if (dragOver)
+    {
+        auto d = r.reduced (24);
+        g.setColour (Colour (0xe0081018)); g.fillRoundedRectangle (d, 16);
+        Path p; p.addRoundedRectangle (d.reduced (10), 14);
+        Path dashed; const float dl[] = { 14, 9 }; PathStrokeType (3.0f).createDashedStroke (dashed, p, dl, 2);
+        g.setColour (SauceColours::neonHi); g.fillPath (dashed);
+        g.setFont (SauceFonts::bold (34.0f));
+        g.drawText ("DROP YOUR BEAT HERE", d, Justification::centred);
+    }
 }
 
 void AssistantPanel::resized()
@@ -169,8 +231,10 @@ void AssistantPanel::resized()
     genreBox.setBounds (34, 152, 420, 34);
     artistBox.setBounds (34, 212, 420, 34);
     roleBox.setBounds (34, 272, 420, 34);
-    listenBtn.setBounds (34, 360, 200, 40);
-    routeBtn.setBounds (244, 360, 210, 40);
+    listenBtn.setBounds (34, 360, 140, 40);
+    linkBtn.setBounds (180, 360, 132, 40);
+    fileBtn.setBounds (318, 360, 136, 40);
+    routeBtn.setVisible (false);
     const int rx = 490, rw = getWidth() - 520;
     ab.setBounds (rx + rw - 200, 98, 200, 30);
     const int bw = (rw - 4 * 8) / 5;

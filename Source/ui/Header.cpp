@@ -87,9 +87,37 @@ void PresetSelectors::refresh()
                 preset.addItem (all[(size_t) i].name, i + 1);
             }
     };
-    for (auto& g : PresetTags::genres)
-        section (g, [g] (const PresetInfo& p) { return p.factory && p.artist.isEmpty() && p.genre == g; });
-    section ("Artist-Inspired Starting Points (Unofficial)", [] (const PresetInfo& p) { return p.factory && p.artist.isNotEmpty(); });
+    // With no genre chosen, each genre is a submenu (the full bank is ~1000 presets); with a genre chosen, it's listed flat.
+    auto* root = preset.getRootMenu();
+    if (proc.genreFilter.isEmpty() && proc.artistFilter.isEmpty())
+    {
+        preset.addSectionHeading ("Genres");
+        for (auto& g : PresetTags::genres)
+        {
+            PopupMenu sm;
+            for (int i : idx) { const auto& p = all[(size_t) i]; if (p.factory && p.artist.isEmpty() && p.genre == g) sm.addItem (i + 1, p.name); }
+            if (sm.getNumItems() > 0) root->addSubMenu (g, sm);
+        }
+    }
+    else
+        for (auto& g : PresetTags::genres)
+            section (g, [g] (const PresetInfo& p) { return p.factory && p.artist.isEmpty() && p.genre == g; });
+    if (proc.artistFilter.isNotEmpty())
+        section (proc.artistFilter + "-Inspired (Unofficial)", [] (const PresetInfo& p) { return p.factory && p.artist.isNotEmpty(); });
+    else
+    {
+        // one submenu per artist: Lead, Hook, Ad-libs, Backgrounds
+        StringArray artists;
+        for (int i : idx) { const auto& p = all[(size_t) i]; if (p.factory && p.artist.isNotEmpty()) artists.addIfNotAlreadyThere (p.artist); }
+        artists.sortNatural();
+        if (! artists.isEmpty()) preset.addSectionHeading ("Artist-Inspired (Unofficial)");
+        for (auto& a : artists)
+        {
+            PopupMenu sm;
+            for (int i : idx) { const auto& p = all[(size_t) i]; if (p.factory && p.artist == a) sm.addItem (i + 1, p.name); }
+            root->addSubMenu (a, sm);
+        }
+    }
     section ("My Presets", [] (const PresetInfo& p) { return ! p.factory; });
     if (idx.empty()) { preset.addItem ("No presets match these filters", -1); preset.setItemEnabled (-1, false); }
 

@@ -31,7 +31,7 @@ namespace Gdiplus { using std::min; using std::max; }
 
 using namespace Gdiplus;
 
-static const wchar_t* kVersion   = L"1.4.0";
+static const wchar_t* kVersion   = L"1.5.0";
 static const wchar_t* kProduct   = L"The Sauce Suite";
 static const wchar_t* kPublisher = L"Drellmadeit";
 static const wchar_t* kUninstKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\TheSauceSuite";

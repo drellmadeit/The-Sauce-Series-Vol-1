@@ -30,6 +30,8 @@ SauceProcessor::SauceProcessor()
 SauceProcessor::~SauceProcessor()
 {
     stopTimer();
+    sendSlot.store (-1); receiveSlot.store (-1);
+    SauceLink::get().closeSlot (linkSendSlot);
     analysis.stop();
     for (auto* p : getParameters())
         if (auto* r = dynamic_cast<RangedAudioParameter*> (p))
@@ -75,6 +77,16 @@ void SauceProcessor::processBlock (AudioBuffer<float>& buffer, MidiBuffer&)
                 hostBpm.store (*bpm);
 
     const int n = buffer.getNumSamples();
+    if (const int ss = sendSlot.load(); ss >= 0)
+    {
+        // Track Link sender: share this track's audio with other instances and pass it through untouched
+        auto mainBus = getBusBuffer (buffer, true, 0);
+        if (mainBus.getNumChannels() > 0)
+            SauceLink::get().write (ss, mainBus.getArrayOfReadPointers(), jmin (2, mainBus.getNumChannels()), 0, n);
+        for (int c = mainBus.getNumChannels(); c < getTotalNumOutputChannels(); ++c)
+            if (c < buffer.getNumChannels()) buffer.clear (c, 0, n);
+        return;
+    }
     for (int start = 0; start < n; start += preparedBlock)
         processChunk (buffer, start, jmin (preparedBlock, n - start));
 }
@@ -102,12 +114,21 @@ void SauceProcessor::processChunk (AudioBuffer<float>& buffer, int start, int n)
             }
         }
     }
+    // Track Link: a chosen sender replaces the DAW sidechain (no routing needed)
+    bool linked = false;
+    if (const int rs = receiveSlot.load(); rs >= 0)
+    {
+        if (linkReader.slot != rs) { linkReader = {}; linkReader.slot = rs; }
+        linked = SauceLink::get().read (linkReader, scMono.data(), n);
+        scPresent = scPresent || linked;
+    }
+    linkReceiving.store (linked);
     if (! scPresent) std::fill (scMono.begin(), scMono.begin() + n, 0.0f);
     sidechainConnected.store (scPresent);
 
     auto p = reader.read (hostBpm.load());
-    { const uint32_t packed = chainOrderPacked.load (std::memory_order_acquire);
-      for (int i = 0; i < 6; ++i) p.order[(size_t) i] = (uint8_t) ((packed >> (4 * i)) & 0xF); }
+    { const uint64_t packed = chainOrderPacked.load (std::memory_order_acquire);
+      for (int i = 0; i < sauce::kNumModules; ++i) p.order[(size_t) i] = (uint8_t) ((packed >> (4 * i)) & 0xF); }
     p.matchGains = matchBuf[matchIdx.load (std::memory_order_acquire)];
     chain.setParams (p);
     if (chain.getLatency() != getLatencySamples()) setLatencySamples (chain.getLatency());   // Mix <-> Tracking switch
@@ -125,6 +146,7 @@ void SauceProcessor::processChunk (AudioBuffer<float>& buffer, int start, int n)
     peakHold (meters.inL, m.inPeak[0]); peakHold (meters.inR, m.inPeak[1]);
     peakHold (meters.outL, m.outPeak[0]); peakHold (meters.outR, m.outPeak[1]);
     meters.gateGainDb.store (m.gateGainDb); meters.compGrDb.store (m.compGrDb); meters.limGrDb.store (m.limGrDb);
+    meters.deessGrDb.store (m.deessGrDb); meters.popGrDb.store (m.popGrDb);
     meters.delayReturn.store (m.delayReturnRms); meters.reverbReturn.store (m.reverbReturnRms);
     meters.delayDuckDb.store (m.delayDuckDb); meters.reverbDuckDb.store (m.reverbDuckDb);
     meters.tuneHz.store (m.tuneHz); meters.tuneTarget.store (m.tuneTargetMidi); meters.tuneCorrection.store (m.tuneCorrection);
@@ -178,20 +200,34 @@ void SauceProcessor::setParam (const String& id, float realValue)
         jassertfalse;
 }
 
+String SauceProcessor::upgradeChainOrder (const String& o)
+{
+    // 1.4 orders had six modules (no plosive filter or de-esser; delay, reverb and limiter fixed at the end).
+    // The plosive filter goes right after the gate and the de-esser right after the compressor.
+    if (o.length() == 6 && o.containsOnly ("GTEMCS"))
+    {
+        String u = o;
+        u = u.substring (0, u.indexOfChar ('G') + 1) + "P" + u.substring (u.indexOfChar ('G') + 1);
+        u = u.substring (0, u.indexOfChar ('C') + 1) + "D" + u.substring (u.indexOfChar ('C') + 1);
+        return u + "YRL";
+    }
+    return o;
+}
+
 bool SauceProcessor::isValidChainOrder (const String& o)
 {
-    if (o.length() != 6) return false;
+    if (o.length() != sauce::kNumModules) return false;
     for (auto c : defaultChainOrder()) if (o.indexOfChar (c) < 0) return false;
     return true;
 }
 
 bool SauceProcessor::setChainOrder (const String& order, bool markEdited)
 {
-    if (! isValidChainOrder (order)) return false;       // refuse bad orders, keep the current one
-    const String o = order;
-    const String letters = defaultChainOrder();
-    uint32_t packed = 0;
-    for (int i = 0; i < 6; ++i) packed |= (uint32_t) letters.indexOfChar (o[i]) << (4 * i);
+    const String o = upgradeChainOrder (order);
+    if (! isValidChainOrder (o)) return false;           // refuse bad orders, keep the current one
+    const String letters (sauce::kModuleLetters);
+    uint64_t packed = 0;
+    for (int i = 0; i < sauce::kNumModules; ++i) packed |= (uint64_t) letters.indexOfChar (o[i]) << (4 * i);
     const bool changed = o != chainOrder;
     chainOrder = o;
     chainOrderPacked.store (packed, std::memory_order_release);
@@ -231,6 +267,9 @@ ValueTree SauceProcessor::captureFullState() const
     root.setProperty ("matchApplied", raw.trim(), nullptr);
     root.setProperty ("matchCaptures", analysis.captureStateToString(), nullptr);
     root.setProperty ("chainOrder", chainOrder, nullptr);
+    root.setProperty ("linkSend", linkSendMode, nullptr);
+    root.setProperty ("roleOverride", roleOverride, nullptr);
+    root.setProperty ("linkSource", linkSourceName, nullptr);
     return root;
 }
 
@@ -251,8 +290,98 @@ void SauceProcessor::restoreFullState (const ValueTree& root)
     analysis.captureStateFromString (root.getProperty ("matchCaptures", "").toString());
     if (! setChainOrder (root.getProperty ("chainOrder", defaultChainOrder()).toString(), false)) setChainOrder (defaultChainOrder(), false);
     loadingPreset = false;
+    roleOverride = (int) root.getProperty ("roleOverride", -1);
+    updateRole();
+    if (root.hasProperty ("linkSend")) setLinkSend ((int) root.getProperty ("linkSend", 0));
+    if (root.hasProperty ("linkSource")) setLinkSource (root.getProperty ("linkSource", "").toString());
     undo.clearUndoHistory();
     stateChanged.sendChangeMessage();
+}
+
+//==============================================================================
+void SauceProcessor::updateRole()
+{
+    auto fromText = [] (const String& raw) -> int
+    {
+        const String t = raw.toLowerCase();
+        if (t.contains ("ad-lib") || t.contains ("adlib") || t.contains ("ad lib") || t.contains ("adl")) return 2;
+        if (t.contains ("background") || t.contains ("backing") || t.contains ("bgv") || t.contains ("bg ") || t.endsWith ("bg") || t.contains (" bv")) return 3;
+        if (t.contains ("harmon") || t.contains ("harm ") || t.endsWith ("harm") || t.contains ("stack")) return 4;
+        if (t.contains ("double") || t.contains ("dbl") || t.contains ("dub ")) return 5;
+        if (t.contains ("hook") || t.contains ("chorus")) return 1;
+        if (t.contains ("lead") || t.contains ("main vox") || t.contains ("verse")) return 0;
+        return -1;
+    };
+    int r = -1; String why;
+    if (roleOverride >= 0) { r = roleOverride; why = "set by you"; }
+    if (r < 0) { const String tn = getTrackName(); r = fromText (tn); if (r >= 0) why = "from the track name \"" + tn + "\""; }
+    if (r < 0) { r = fromText (presetName); if (r >= 0) why = "from the preset"; }
+    if (r < 0)
+    {
+        // settings: a high low-cut plus width/doubler and a lower level reads as a supporting part
+        const bool stereo = reader.get (ParamIDs::dblOn) > 0.5f || reader.get (ParamIDs::wideOn) > 0.5f;
+        const float hp = reader.get (ParamIDs::band (0, "on")) > 0.5f && (int) reader.get (ParamIDs::band (0, "type")) == 3 ? reader.get (ParamIDs::band (0, "freq")) : 20.0f;
+        if (hp >= 220.0f && stereo && reader.get (ParamIDs::outGain) < -2.0f) { r = 3; why = "from the settings (high low-cut, wide, lower level)"; }
+        else if (hp >= 300.0f) { r = 2; why = "from the settings (thin, filtered sound)"; }
+        else { r = 0; why = "default"; }
+    }
+    currentRole.store (r);
+    roleReason = why;
+}
+
+String SauceProcessor::linkDisplayName() const
+{
+    const String t = getTrackName();
+    if (t.isNotEmpty()) return t;
+    return "Sauce Suite " + String (linkSendSlot + 1);
+}
+
+void SauceProcessor::setLinkSend (int mode)
+{
+    mode = jlimit (0, 2, mode);
+    if (mode == linkSendMode && (mode == LinkOff || linkSendSlot >= 0)) return;
+    auto& link = SauceLink::get();
+    if (mode == LinkOff)
+    {
+        sendSlot.store (-1);
+        link.closeSlot (linkSendSlot); linkSendSlot = -1;
+        linkSendMode = LinkOff;
+        setLatencySamples (chain.getLatency());
+    }
+    else
+    {
+        if (linkSendSlot < 0) linkSendSlot = link.openSlot ({}, mode);
+        linkSendMode = linkSendSlot >= 0 ? mode : LinkOff;
+        link.rename (linkSendSlot, linkDisplayName(), mode);
+        setLinkSource ({});                                   // a sender doesn't listen to anything itself
+        setLatencySamples (0);                                // pass-through: no delay on the beat track
+        sendSlot.store (linkSendSlot);
+    }
+    stateChanged.sendChangeMessage();
+}
+
+void SauceProcessor::setLinkSource (const String& name)
+{
+    linkSourceName = name;
+    receiveSlot.store (name.isEmpty() ? -1 : SauceLink::get().findByName (name));
+    stateChanged.sendChangeMessage();
+}
+
+void SauceProcessor::refreshLink()
+{
+    auto& link = SauceLink::get();
+    if (linkSendSlot >= 0) link.rename (linkSendSlot, linkDisplayName(), linkSendMode);
+    if (linkSourceName.isNotEmpty())
+    {
+        const int s = link.findByName (linkSourceName);
+        if (s != receiveSlot.load()) receiveSlot.store (s);
+    }
+}
+
+void SauceProcessor::updateTrackProperties (const TrackProperties& props)
+{
+    const SpinLock::ScopedLockType l (trackNameLock);
+    if (props.name.has_value()) trackName = *props.name;
 }
 
 void SauceProcessor::getStateInformation (MemoryBlock& dest)

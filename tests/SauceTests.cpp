@@ -146,7 +146,7 @@ void neutral (SauceProcessor& p)
     p.markLoading (true);
     p.resetAllParametersToDefault();
     using namespace ParamIDs;
-    for (auto* id : { &gateOn, &tuneOn, &compOn, &satOn, &dblOn, &wideOn, &dlyOn, &revOn }) p.setParam (*id, 0);
+    for (auto* id : { &gateOn, &tuneOn, &compOn, &satOn, &dblOn, &wideOn, &dlyOn, &revOn, &deessOn, &popOn }) p.setParam (*id, 0);
     for (int b = 0; b < 6; ++b) p.setParam (band (b, "gain"), 0);
     p.setParam (band (0, "on"), 0);
     p.markLoading (false);
@@ -295,7 +295,11 @@ static void testMatchEq()
 {
     std::printf ("\n4. Match EQ moves the vocal toward the reference and respects the boost/cut limit\n");
     using namespace ParamIDs;
-    auto mine = filtered (noise (8.0, -14.0f, 11), sauce::FilterType::LowShelf, 250, 0.7f, 4);    // a bit dark
+    // a sung vocal (a bit dark) with breaths/noise between phrases - the smart capture only counts the sung notes
+    auto sung = vowel (8.0, 180, -14.0f, 15.0f, 700.0f); syllables (sung, 400, 200);
+    auto breath = filtered (noise (8.0, -40.0f, 11), sauce::FilterType::HighShelf, 4000, 0.7f, 10.0f);
+    for (size_t i = 0; i < sung.size(); ++i) sung[i] += breath[i];
+    auto mine = filtered (sung, sauce::FilterType::LowShelf, 250, 0.7f, 4);
     auto ref  = filtered (mine, sauce::FilterType::HighShelf, 3000, 0.7f, 6.0f);                   // known +6 dB top end
 
     for (float limit : { 4.0f, 12.0f })
@@ -358,7 +362,7 @@ static void testPresetsAndSession()
     auto trap = p->presets.filtered ("Trap", "");
     bool hasUser = false; for (int i : trap) hasUser |= p->presets.all()[(size_t) i].name == "D-R3LL Hook";
     expect (hasUser, "user preset appears under its genre filter");
-    expect (p->presets.filtered ("", "Drake").size() == 1, "artist filter shows the Drake-inspired starting point");
+    expect (p->presets.filtered ("", "Drake").size() == 4, "artist filter shows Drake-inspired Lead, Hook, Ad-libs and Backgrounds");
 
     // unsaved edit -> session save -> brand-new instance restore
     p->setParam (compThresh, -31); p->setParam (revType, 2); p->setParam (tuneKey, 7);
@@ -700,8 +704,8 @@ static void testGenresArtistsAndChain()
     auto vox = vowel (2.0, 220, -6.0f, 20.0f); syllables (vox);
     const int lat = q->getLatencySamples();
     q->reset(); auto a = render (*q, vox);
-    expect (q->setChainOrder ("GTESMC"), "chain can be rearranged (saturation before compression)");
-    expect (! q->setChainOrder ("GGEMCS") && q->getChainOrder() == "GTESMC", "invalid orders are refused");
+    expect (q->setChainOrder ("GPTEMSCDYRL"), "chain can be rearranged (saturation before compression)");
+    expect (! q->setChainOrder ("GGTEMSCDYRL") && q->getChainOrder() == "GPTEMSCDYRL", "invalid orders are refused");
     q->reset(); auto b = render (*q, vox);
     double diff = 0; for (size_t i = 0; i < vox.size(); ++i) diff = std::max (diff, (double) std::abs (a.l[i] - b.l[i]));
     std::printf ("     comp->sat vs sat->comp: max sample difference %.3f, latency %d -> %d\n", diff, lat, q->getLatencySamples());
@@ -709,12 +713,13 @@ static void testGenresArtistsAndChain()
     expect (q->getLatencySamples() == lat, "reordering does not change latency");
     MemoryBlock st; q->getStateInformation (st);
     auto r = makeProc(); r->setStateInformation (st.getData(), (int) st.getSize());
-    expect (r->getChainOrder() == "GTESMC", "chain order saved with the DAW session");
+    expect (r->getChainOrder() == "GPTEMSCDYRL", "chain order saved with the DAW session");
+    expect (SauceProcessor::upgradeChainOrder ("GTSEMC") == "GPTSEMCDYRL", "1.4 sessions/presets upgrade to the 11-module chain (" + SauceProcessor::upgradeChainOrder ("GTSEMC") + ")");
     const int lofi = p->presets.indexOf ("Lo-Fi - Lead");
     p->presets.load (lofi);
-    expect (p->getChainOrder() == "GTSEMC", "Lo-Fi presets bring their own chain order (saturation first)");
+    expect (p->getChainOrder() == "GPTSEMCDYRL", "Lo-Fi presets bring their own chain order (saturation first)");
     p->presets.load (p->presets.indexOf ("R&B - Lead"));
-    expect (p->getChainOrder() == "GTEMCS", "other presets restore the standard order");
+    expect (p->getChainOrder() == SauceProcessor::defaultChainOrder(), "other presets restore the standard order");
 }
 
 /** Synthetic "beats" with known character for the Assistant. */
@@ -835,6 +840,229 @@ static void testAssistant()
     expect (n->assistant.apply (t3) && n->presetName == "Pop - Lead" && n->assistant.notes.joinIntoString (" ").contains ("No beat"), "without a beat it sets up the vocal alone and explains why");
 }
 
+/** 1.5: fully serial chain, de-esser, plosive filter, smoother tune, limiter, 12-band dynamic EQ, resonance suppressor. */
+static void testSerialChainAndNewModules()
+{
+    std::printf ("\n12. Serial chain (every module in tab order) and the new modules\n");
+    using namespace ParamIDs;
+    auto vox = vowel (3.0, 220, -8.0f, 20.0f); syllables (vox);
+    auto diff = [] (const Render& a, const Render& b)
+    { double d = 0; for (size_t i = 0; i < a.l.size(); ++i) d = std::max (d, (double) std::abs (a.l[i] - b.l[i])); return d; };
+
+    // delay/reverb are serial now: reverb after delay reverbs the echoes, so swapping them changes the sound
+    auto p = makeProc(); neutral (*p);
+    p->setParam (dlyOn, 1); p->setParam (dlyMix, 40); p->setParam (dlyFeedback, 40); p->setParam (dlyDuck, 0);
+    p->setParam (revOn, 1); p->setParam (revMix, 40); p->setParam (revDuck, 0);
+    const int lat0 = p->getLatencySamples();
+    p->reset(); auto a = render (*p, vox);
+    p->setChainOrder ("GPTEMCDSRYL"); p->reset(); auto b = render (*p, vox);
+    std::printf ("     delay->reverb vs reverb->delay: max difference %.3f\n", diff (a, b));
+    expect (diff (a, b) > 0.01, "Delay and Reverb run in tab order (swapping them changes the sound)");
+    bool sameLat = true;
+    for (auto o : { "LGPTEMCDSYR", "RYSDCMETPGL", "TGPEMCDSYRL" }) { p->setChainOrder (o); sameLat &= p->getLatencySamples() == lat0; }
+    expect (sameLat, "every order keeps the same latency (" + String (lat0 * 1000.0 / kSr, 1) + " ms)");
+
+    // limiter: last = hard ceiling; moved before the effects = tails can pass it
+    auto q = makeProc(); neutral (*q);
+    auto loud = vowel (2.0, 200, 0.0f); syllables (loud);
+    q->setParam (limOn, 1); q->setParam (limCeiling, -12); q->setParam (revOn, 1); q->setParam (revMix, 80); q->setParam (revDuck, 0);
+    q->setParam (inGain, 6);
+    q->setChainOrder (SauceProcessor::defaultChainOrder()); q->reset();
+    const float pkLast = peakDb (render (*q, loud).l, 4800, loud.size());
+    q->setChainOrder ("GPTEMCDSLYR"); q->reset();
+    const float pkMid = peakDb (render (*q, loud).l, 4800, loud.size());
+    std::printf ("     ceiling -12 dB: limiter last -> peak %.2f dB, limiter before reverb -> peak %.2f dB\n", pkLast, pkMid);
+    expect (pkLast <= -11.9f, "limiter last: nothing goes over the ceiling (now down to -30 dB)");
+    expect (pkMid > pkLast + 0.5f, "limiter moved before the reverb: the reverb comes after it");
+    // drive and character
+    q->setChainOrder (SauceProcessor::defaultChainOrder()); q->setParam (inGain, 0); q->setParam (revOn, 0); q->setParam (limCeiling, -1);
+    auto quiet = vowel (2.0, 200, -14.0f); syllables (quiet);
+    q->reset(); const float r0 = rmsDb (render (*q, quiet).l, 4800, quiet.size());
+    q->setParam (limDrive, 12); q->reset(); const float r1 = rmsDb (render (*q, quiet).l, 4800, quiet.size());
+    q->setParam (limCharacter, 2); q->reset(); const float r2 = rmsDb (render (*q, quiet).l, 4800, quiet.size());
+    std::printf ("     limiter drive 0 -> 12 dB: %.1f -> %.1f dB RMS; Loud character %.1f dB RMS\n", r0, r1, r2);
+    expect (r1 > r0 + 6.0f, "Drive pushes the vocal louder into the limiter");
+    expect (r2 >= r1 - 0.2f, "Loud character keeps or adds loudness");
+
+    // de-esser: harsh S bursts get turned down, the vowel barely changes
+    auto d = makeProc(); neutral (*d);
+    auto sss = filtered (noise (2.0, -10.0f, 4), sauce::FilterType::BandPass, 7000, 1.0f, 0);
+    auto mixS = vowel (2.0, 220, -12.0f);
+    for (size_t i = 0; i < mixS.size(); ++i) if ((i / 9600) % 2) mixS[i] = sss[i];       // alternate vowel / S every 0.2 s
+    d->reset(); auto off = render (*d, mixS);
+    d->setParam (deessOn, 1); d->setParam (deessThresh, -40); d->setParam (deessRange, 12); d->reset(); auto on = render (*d, mixS);
+    auto band = [] (const std::vector<float>& x, bool sOnly)
+    { double e = 0; size_t n = 0; for (size_t i = 9600; i < x.size(); ++i) if (((i / 9600) % 2 == 1) == sOnly && i % 9600 > 1200) { e += x[i] * x[i]; ++n; }
+      return sauce::gainToDb ((float) std::sqrt (e / (double) std::max<size_t> (1, n)), -200.0f); };
+    const float sCut = band (off.l, true) - band (on.l, true), vCut = band (off.l, false) - band (on.l, false);
+    std::printf ("     de-esser: S bursts down %.1f dB, vowels down %.1f dB\n", sCut, vCut);
+    expect (sCut > 4.0f && vCut < 1.0f, "De-esser tames S's without touching the vowels");
+
+    // plosive filter: a P/B thump (low burst with no mids) is pulled down; a full vowel is left alone
+    auto pp = makeProc(); neutral (*pp);
+    std::vector<float> pops ((size_t) (2.0 * kSr), 0.0f);
+    for (int k = 0; k < 4; ++k)
+        for (int i = 0; i < (int) (0.06 * kSr); ++i)
+        {
+            const size_t at = (size_t) (0.2 * kSr + k * 0.45 * kSr) + (size_t) i;
+            pops[at] = 0.7f * std::sin (sauce::kTwoPi * 70.0f * (float) i / (float) kSr) * std::exp (-(float) i / (float) (0.02 * kSr));
+        }
+    auto full = vowel (2.0, 130, -10.0f);
+    pp->reset(); const float p0 = peakDb (render (*pp, pops).l, 0, pops.size()), v0 = rmsDb (render (*pp, full).l, 4800, full.size());
+    pp->setParam (popOn, 1); pp->setParam (popSens, 60); pp->reset();
+    const float p1 = peakDb (render (*pp, pops).l, 0, pops.size()); pp->reset(); const float v1 = rmsDb (render (*pp, full).l, 4800, full.size());
+    std::printf ("     De-Pop: plosive peaks %.1f -> %.1f dB; low male vowel %.1f -> %.1f dB\n", p0, p1, v0, v1);
+    expect (p0 - p1 > 4.0f, "De-Pop pulls P/B pops down");
+    expect (std::abs (v0 - v1) < 1.0f, "De-Pop leaves a normal deep vowel alone");
+
+    // smoother Auto Tune: Smoothness keeps vibrato on a held note; hard tune still flattens it
+    auto t = makeProc(); neutral (*t);
+    auto vib = vowel (3.0, 220.0f * std::pow (2.0f, 0.2f / 12.0f), -10.0f, 25.0f);   // 20 cents sharp of A3, +-25-cent vibrato
+    auto spread = [&] (float smooth, float speed)
+    {
+        t->setParam (tuneOn, 1); t->setParam (tuneKey, 9); t->setParam (tuneScale, 6); t->setParam (tuneSpeed, speed);
+        t->setParam (tuneAmount, 100); t->setParam (tuneHumanize, 0); t->setParam (tuneSmooth, smooth); t->reset();
+        auto o = render (*t, vib);
+        std::vector<float> c; for (size_t s = (size_t) kSr; s + 16000 < o.l.size(); s += 1200) c.push_back (cents (pitchOf (o.l, s), 220.0f));
+        float mn = 1e9f, mx = -1e9f, avg = 0; for (float v : c) { mn = std::min (mn, v); mx = std::max (mx, v); avg += v / (float) c.size(); }
+        return std::make_pair (mx - mn, avg);
+    };
+    t->setParam (tuneOn, 0); t->reset();
+    float natural = 0; { auto o = render (*t, vib); float mn = 1e9f, mx = -1e9f;
+        for (size_t s = (size_t) kSr; s + 16000 < o.l.size(); s += 1200) { const float c = cents (pitchOf (o.l, s), 220.0f); mn = std::min (mn, c); mx = std::max (mx, c); } natural = mx - mn; }
+    const auto s0 = spread (0, 30), s1 = spread (100, 30), hard = spread (100, 0);
+    std::printf ("     pitch swing: singer's own vibrato %.0f c | tuned, Smoothness 0%% %.0f c, 100%% %.0f c (centre %+.0f c) | hard tune %.0f c\n",
+                 natural, s0.first, s1.first, s1.second, hard.first);
+    expect (std::abs (s1.first - natural) < 15.0f && std::abs (s1.first - natural) < std::abs (s0.first - natural),
+            "Smoothness keeps the singer's natural vibrato (no chasing wobble)");
+    expect (std::abs (s1.second) < 12.0f, "...while the note's centre is still pulled in tune");
+    expect (hard.first < s1.first, "hard-tune speed ignores Smoothness (stays robotic)");
+
+    // 12-band EQ: presets leave bands 7-12 off; an added band works; dynamic band; resonance suppressor
+    auto e = makeProc(); neutral (*e);
+    e->presets.load (e->presets.indexOf ("R&B - Lead"));
+    bool extraOff = true; for (int b = 6; b < 12; ++b) extraOff &= e->reader.get (ParamIDs::band (b, "on")) < 0.5f;
+    expect (extraOff, "presets keep their 6 bands (bands 7-12 stay off)");
+    neutral (*e);
+    auto tone = [] (float hz, float db) { std::vector<float> x ((size_t) (1.5 * kSr)); for (size_t i = 0; i < x.size(); ++i) x[i] = sauce::dbToGain (db) * std::sin (sauce::kTwoPi * hz * (float) i / (float) kSr); return x; };
+    auto t1k = tone (1000, -20);
+    e->reset(); const float base = rmsDb (render (*e, t1k).l, 24000, t1k.size());
+    e->setParam (ParamIDs::band (9, "on"), 1); e->setParam (ParamIDs::band (9, "type"), 0); e->setParam (ParamIDs::band (9, "freq"), 1000);
+    e->setParam (ParamIDs::band (9, "gain"), 6); e->setParam (ParamIDs::band (9, "q"), 1); e->reset();
+    const float boosted = rmsDb (render (*e, t1k).l, 24000, t1k.size());
+    expect (std::abs (boosted - base - 6.0f) < 0.5f, "band 10 of 12 works (+" + String (boosted - base, 1) + " dB at 1 kHz)");
+    e->setParam (ParamIDs::band (9, "gain"), 0); e->setParam (ParamIDs::band (9, "dyn"), -9); e->setParam (ParamIDs::band (9, "thr"), -30);
+    auto quietT = tone (1000, -45), loudT = tone (1000, -6);
+    e->reset(); const float qd = rmsDb (render (*e, quietT).l, 24000, quietT.size()) + 45.0f;
+    e->reset(); const float ld = rmsDb (render (*e, loudT).l, 24000, loudT.size()) + 6.0f;
+    std::printf ("     dynamic band (-9 dB above -30 dB): quiet tone %+.1f dB, loud tone %+.1f dB\n", qd, ld);
+    expect (std::abs (qd + 3.0f) < 1.0f && ld < -6.0f, "dynamic EQ band only cuts when the band gets loud");
+    neutral (*e);
+    auto ring = filtered (noise (2.0, -18.0f, 9), sauce::FilterType::HighCut, 9000, 0.7f, 0);
+    for (size_t i = 0; i < ring.size(); ++i) ring[i] += 0.12f * std::sin (sauce::kTwoPi * 3150.0f * (float) i / (float) kSr);   // a harsh ringing resonance
+    auto at = [] (const std::vector<float>& x, float hz) { return rmsDb (filtered (x, sauce::FilterType::BandPass, hz, 12.0f, 0), 48000, x.size()); };
+    e->reset(); auto r0e = render (*e, ring);
+    e->setParam (resOn, 1); e->setParam (resDepth, 9); e->reset(); auto r1e = render (*e, ring);
+    const float resCut = at (r0e.l, 3150) - at (r1e.l, 3150), elseCut = at (r0e.l, 800) - at (r1e.l, 800);
+    std::printf ("     resonance suppressor: ringing 3.15 kHz down %.1f dB, 800 Hz down %.1f dB\n", resCut, elseCut);
+    expect (resCut > 3.0f && elseCut < 1.5f, "resonance suppressor dips the ringing frequency and leaves the rest");
+    std::printf ("     Mix-mode latency: %.1f ms (was 15.9 ms in 1.4)\n", lat0 * 1000.0 / kSr);
+    expect (lat0 * 1000.0 / kSr < 14.0, "Mix latency trimmed (new modules add none)");
+}
+
+/** 1.5: Track Link, beat-file drop, role detection, preset bank. */
+static void testLinkRolesAndPresets()
+{
+    std::printf ("\n13. Track Link, beat files, track roles and the 1.5 preset bank\n");
+    using namespace ParamIDs;
+    auto beat = fakeBeat (8.0, 140, 12, 2, false, 5);
+    auto vox = vowel (8.0, 220, -12.0f, 20.0f); syllables (vox);
+
+    // a Sauce Suite on the beat track in Send mode passes it through untouched with no latency
+    auto sender = makeProc (false); neutral (*sender);
+    sender->updateTrackProperties ({ String ("Beat"), std::nullopt });
+    sender->setLinkSend (SauceProcessor::LinkSendBeat);
+    expect (sender->getLatencySamples() == 0, "sending track reports 0 latency");
+    auto receiver = makeProc (false); neutral (*receiver);
+    bool listed = false; for (auto& s : SauceLink::get().senders()) listed |= s.name == "Beat";
+    expect (listed, "the beat track shows up in the LINK list by its DAW track name");
+    receiver->setLinkSource ("Beat");
+    receiver->hostBpm.store (140);
+    receiver->analysis.assistantStart();
+    Render pass;
+    {   // DAW callback order: beat track first, then the vocal track, block by block
+        AudioBuffer<float> bb (2, kBlock), vb (2, kBlock); MidiBuffer midi; pass.l.resize (beat.size());
+        for (size_t s = 0; s < beat.size(); s += kBlock)
+        {
+            const int len = (int) std::min<size_t> (kBlock, beat.size() - s);
+            bb.setSize (2, len, false, false, true); vb.setSize (2, len, false, false, true);
+            for (int i = 0; i < len; ++i) { bb.setSample (0, i, beat[s + (size_t) i]); bb.setSample (1, i, beat[s + (size_t) i]); vb.setSample (0, i, vox[s + (size_t) i]); vb.setSample (1, i, vox[s + (size_t) i]); }
+            sender->processBlock (bb, midi); receiver->processBlock (vb, midi); receiver->analysis.pump();
+            for (int i = 0; i < len; ++i) pass.l[s + (size_t) i] = bb.getSample (0, i);
+        }
+    }
+    double pd = 0; for (size_t i = 0; i < beat.size(); ++i) pd = std::max (pd, (double) std::abs (pass.l[i] - beat[i]));
+    expect (pd < 1e-6, "the sending track's audio is untouched");
+    expect (receiver->isLinkReceiving() && receiver->analysis.isReceivingSidechain(), "the vocal instance hears the linked beat with no sidechain routing");
+    auto in = receiver->assistant.gather();
+    expect (in.hasBeat && ! in.beatFromFile, "the Assistant measures the linked beat (" + String (in.beatSeconds, 1) + " s)");
+    receiver->analysis.assistantStop();
+    sender->setLinkSend (SauceProcessor::LinkOff);
+    expect (sender->getLatencySamples() > 0, "switching Send off restores normal processing latency");
+
+    // dropping a beat file on the Assistant
+    auto f = File::createTempFile (".wav");
+    {
+        WavAudioFormat wav; std::unique_ptr<OutputStream> os (f.createOutputStream());
+        std::unique_ptr<AudioFormatWriter> w (wav.createWriterFor (os.get(), kSr, 1, 24, {}, 0));
+        if (w) { os.release(); const float* ch[] = { beat.data() }; w->writeFromFloatArrays (ch, 1, (int) beat.size()); }
+    }
+    auto solo = makeProc (false); neutral (*solo);
+    String err; const bool loaded = solo->analysis.loadBeatFile (f, err);
+    auto fin = solo->assistant.gather();
+    expect (loaded && fin.hasBeat && fin.beatFromFile, "a dropped beat file is analysed (" + String (fin.beatSeconds, 1) + " s, " + (fin.keyValid ? "key found" : "no key") + ")");
+    SauceAssistant::Target tg; tg.genre = "Trap";
+    const bool applied = solo->assistant.apply (tg);
+    const String notes = solo->assistant.notes.joinIntoString (" | ");
+    expect (applied && notes.contains ("pre-delay") && notes.contains ("beat file"), "the Assistant tailors the chain from the file");
+    f.deleteFile();
+
+    // track roles
+    auto r = makeProc (false);
+    r->presets.load (r->presets.indexOf ("Trap - Ad-libs"));
+    expect (r->getRole() == 2, "role from preset: 'Trap - Ad-libs' -> Ad-libs");
+    r->updateTrackProperties ({ String ("BG Vox"), std::nullopt }); r->updateRole();
+    expect (r->getRole() == 3, "role from DAW track name: 'BG Vox' -> Backgrounds (" + r->getRoleReason() + ")");
+    r->setRoleOverride (5);
+    expect (r->getRole() == 5, "you can set the role yourself (Doubles)");
+    MemoryBlock st; r->getStateInformation (st);
+    auto r2 = makeProc (false); r2->setStateInformation (st.getData(), (int) st.getSize());
+    expect (r2->getRoleOverride() == 5, "the role choice is saved with the session");
+
+    // role-aware coach: muddy, unevenly-levelled part -> different advice for lead vs backgrounds
+    auto coachFor = [&] (int role)
+    {
+        auto c = makeProc (false); neutral (*c); c->setRoleOverride (role);
+        auto mud = filtered (vowel (6.0, 140, -14.0f, 10.0f, 350.0f), sauce::FilterType::LowShelf, 200, 0.7f, 8.0f);
+        syllables (mud); render (*c, mud);
+        return c->analysis.getCoachMessage();
+    };
+    const auto lead = coachFor (0), bg = coachFor (3);
+    std::printf ("     Coach (lead):        %s / %s\n     Coach (backgrounds): %s / %s\n", lead.observation.c_str(), lead.suggestion.c_str(), bg.observation.c_str(), bg.suggestion.c_str());
+    expect (bg.observation != lead.observation || bg.suggestion != lead.suggestion, "the Vocal Coach gives part-specific advice");
+
+    // preset bank
+    auto pb = makeProc (false);
+    const int n = (int) pb->presets.all().size();
+    int perArtist = 0; for (auto& ps : pb->presets.all()) if (ps.artist == "Drake") ++perArtist;
+    int thin = 0; String thinNames;
+    for (auto& g : PresetTags::genres) if (! g.startsWith ("Podcast") && ! g.startsWith ("FX") && PresetTags::artistsForGenre (g).size() < 10) { ++thin; thinNames << g << " "; }
+    std::printf ("     %d factory presets; %d artists\n", n, (int) PresetTags::artistRoster().size());
+    expect (n >= 900, String (n) + " factory presets");
+    expect (perArtist == 4, "every artist has Lead, Hook, Ad-libs and Backgrounds presets");
+    expect (thin == 0, "every music genre has at least 10 artists " + thinNames);
+}
+
 /** Renders the real editor (fed with live audio) to a PNG: SauceTests --snapshot out.png [tabIndex] [scale] */
 static int snapshot (const String& path, int tab, float scale)
 {
@@ -925,6 +1153,8 @@ int main (int argc, char** argv)
     testAutoKey();
     testGenresArtistsAndChain();
     testAssistant();
+    testSerialChainAndNewModules();
+    testLinkRolesAndPresets();
     testLatencyAndBypass();
     std::printf ("\n%d/%d checks passed\n", checks - failures, checks);
     return failures == 0 ? 0 : 1;

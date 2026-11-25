@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.5.0 - 2026-11-25
+- **Fully serial vocal chain.** Every module is now a tab you can drag, including Delay, Reverb and the Limiter, and the sound runs through them strictly left to right. Reverb after delay reverbs the echoes; a compressor after the effects pumps the tails; a gate after the reverb gives a gated verb. Latency never changes with the order. Old sessions and presets are converted automatically.
+- **New De-Esser** (De-Ess tab): split-band, zero latency. Frequency, Threshold, Max Reduction and a Listen button to hear just the S's.
+- **New De-Pop plosive filter** (De-Pop tab): catches P and B pops and mic air blasts by pulling down only the low end for a split second. A full, deep voice isn't touched. Zero latency.
+- **Smoother Auto Tune:** notes glide in an S-curve instead of jumping, the pitch target is ramped smoothly, and the new **Smoothness** knob keeps your natural vibrato and slides while centring the note. Hard-tune settings still sound hard.
+- **Limiter upgrades:** Drive (push it louder), Character (Clean / Punchy / Loud with a soft clipper), and a Ceiling that now goes down to -30 dB. It can sit anywhere in the chain; at the end nothing goes over the ceiling.
+- **12-band EQ:** double-click empty space on the graph to add bands 7-12 (every preset still uses its original 6 bands). Each band has **Dyn** and **Thr** controls for Pro-Q-style dynamic EQ (cut or boost only when that frequency gets loud).
+- **Resonance suppressor** (RESONANCE button on the EQ): a Soothe-style processor that finds harsh, ringing frequencies as you sing and dips them only while they ring. Depth, Sharpness, Selectivity, Speed, Low/High range and Delta (hear what it removes). Live cuts are drawn on the EQ graph.
+- **Track Link - no sidechain routing needed.** Put The Sauce Suite on your beat (or a reference vocal) track and choose *Send* in the LINK menu. Your vocal's instance can then pick that track and hears it as if it were sidechained: analyzer, Vocal Coach, Sauce Assistant, Auto Key and Match EQ all work from it. The sending track passes through untouched with 0 latency. Works when the plugins run in the same DAW process (FL Studio's default, not "bridged").
+- **Drag and drop:** drop your instrumental (WAV, MP3, FLAC, AIFF, OGG) on the Sauce Assistant, or a reference vocal on Match EQ.
+- **Assistant clash check:** tells you which range your vocal and the beat both fight over and what to do about it.
+- **Smarter Match EQ:** captures only count sung notes, so breaths, S's, noise and quiet tails don't skew the match.
+- **Track roles + role-aware Vocal Coach:** the plugin works out whether a track is Lead, Hook, Ad-libs, Backgrounds, Harmonies or Doubles. It uses your choice first, then the DAW track name ("BG Vox", "Adlibs"...), then the preset, then the settings. The Coach adapts: stricter S's and steadier levels for stacks, less low end for supporting parts, tuning and width checks for harmonies and doubles. Click the role badge on the Coach to change it.
+- **943 factory presets** (was 421): 152 artists (was 89), every music genre now has at least 10, and every artist has Lead, Hook, Ad-libs and Backgrounds versions. 3 new creative chains built on the new order freedom. Genres and artists open as submenus in the preset list.
+- **Lower latency:** Mix mode is now 13.6 ms (was 15.9 ms); the new modules add none. Tracking mode stays about 0.5 ms.
+- **New look:** brighter electric blue, graffiti tag-style titles with paint drips, and a spray-painted brick wall background.
+- 130 automated checks (was 96), all passing on Linux and the Windows build.
+
 ## 1.4.0 - 2026-11-24
 - **Sauce Assistant** (new button at the top of the plugin). Tell it the sound you want (a genre, an artist sound, or "Match the beat"), and the part: Lead, Hook, Ad-libs, Backgrounds, Harmonies or Doubles. Then play your beat through the sidechain for 10-20 seconds. It:
   - measures the beat (how much 808/sub, crowded low mids, where the vocal has room, how bright the hats are, how dense it is), takes the tempo from your DAW and detects the key;

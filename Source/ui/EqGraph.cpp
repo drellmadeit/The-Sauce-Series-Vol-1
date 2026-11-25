@@ -93,24 +93,53 @@ void EqPlot::paint (Graphics& g)
     // EQ curve
     const double sr = displaySr (proc);
     const bool eqOn = proc.reader.get (ParamIDs::eqOn) > 0.5f;
-    sauce::BiquadCoefs cs[6]; bool on[6];
-    for (int b = 0; b < 6; ++b)
+    constexpr int NB = sauce::ParametricEQ::kBands;
+    sauce::BiquadCoefs cs[NB]; bool on[NB];
+    const auto& dynNow = proc.dynamicOffsets();
+    for (int b = 0; b < NB; ++b)
     {
         on[b] = param (b, "on") > 0.5f;
         sauce::EqBandParams bp; bp.type = (int) param (b, "type"); bp.freq = param (b, "freq"); bp.gainDb = param (b, "gain"); bp.q = param (b, "q");
-        cs[b] = sauce::ParametricEQ::designFor (bp, sr);
+        cs[b] = sauce::ParametricEQ::designFor (bp, sr, dynNow[(size_t) b]);      // live: includes dynamic-band movement
     }
     Path curve;
     for (float x = r.getX(); x <= r.getRight(); x += 2.0f)
     {
         const float f = freqForX (x);
-        double db = 0; for (int b = 0; b < 6; ++b) if (on[b]) db += cs[b].magnitudeDb (f, sr);
+        double db = 0; for (int b = 0; b < NB; ++b) if (on[b]) db += cs[b].magnitudeDb (f, sr);
         const float y = jlimit (r.getY(), r.getBottom(), yForDb ((float) db));
         if (x == r.getX()) curve.startNewSubPath (x, y); else curve.lineTo (x, y);
     }
     {
         Graphics::ScopedSaveState ss (g); g.reduceClipRegion (r.toNearestInt().expanded (0, 2));
         SauceDraw::glowPath (g, curve, eqOn ? SauceColours::neonHi : SauceColours::textDim, 3.0f, eqOn ? 10 : 0);
+    }
+
+    // resonance suppressor: live cuts hanging from the 0 dB line (white)
+    if (proc.reader.get (ParamIDs::resOn) > 0.5f)
+    {
+        const auto& cuts = proc.resonanceCuts();
+        const float q = 2.0f + 8.0f * proc.reader.get (ParamIDs::resSharp) * 0.01f;
+        sauce::BiquadCoefs rc[sauce::ResonanceSuppressor::kBands]; bool any = false;
+        for (int i = 0; i < sauce::ResonanceSuppressor::kBands; ++i)
+        {
+            rc[i] = sauce::BiquadCoefs::make (sauce::FilterType::Bell, sr, std::min (sauce::ResonanceSuppressor::centre (i), (float) sr * 0.45f), q, cuts[(size_t) i]);
+            any |= cuts[(size_t) i] < -0.05f;
+        }
+        Path rp; const float y0 = yForDb (0.0f);
+        rp.startNewSubPath (r.getX(), y0);
+        for (float x = r.getX(); x <= r.getRight(); x += 2.0f)
+        {
+            const float f = freqForX (x);
+            double db = 0; if (any) for (int i = 0; i < sauce::ResonanceSuppressor::kBands; ++i) if (cuts[(size_t) i] < -0.01f) db += rc[i].magnitudeDb (f, sr);
+            rp.lineTo (x, jlimit (r.getY(), r.getBottom(), yForDb ((float) db)));
+        }
+        rp.lineTo (r.getRight(), y0); rp.closeSubPath();
+        g.setColour (Colours::white.withAlpha (0.28f)); g.fillPath (rp);
+        g.setColour (Colours::white.withAlpha (0.9f)); g.strokePath (rp, PathStrokeType (1.4f));
+        const float lo = proc.reader.get (ParamIDs::resLo), hi = proc.reader.get (ParamIDs::resHi);
+        g.setColour (Colours::white.withAlpha (0.06f));
+        g.fillRect (Rectangle<float>::leftTopRightBottom (xForFreq (lo), r.getY(), xForFreq (hi), r.getBottom()));
     }
 
     // selected band marker
@@ -128,9 +157,10 @@ void EqPlot::paint (Graphics& g)
         g.drawText (f >= 1000 ? String (f / 1000.0f, 2) + " kHz" : String (roundToInt (f)) + " Hz", box, Justification::centred);
     }
 
-    // nodes
-    for (int b = 0; b < 6; ++b)
+    // nodes (bands 7-12 only appear once they're switched on)
+    for (int b = 0; b < NB; ++b)
     {
+        if (! isShown (b)) continue;
         const auto p = nodePos (b);
         const bool sel = b == selected;
         const float rad = sel ? 13.0f : 12.0f;
@@ -143,13 +173,20 @@ void EqPlot::paint (Graphics& g)
         g.setColour (on[b] ? Colours::white : SauceColours::textDim);
         g.setFont (SauceFonts::bold (15.0f));
         g.drawText (String (b + 1), Rectangle<float> (p.x - rad, p.y - rad + 1, rad * 2, rad * 2), Justification::centred);
+        if (on[b] && std::abs (param (b, "dyn")) > 0.05f)       // dynamic band: outer ring
+        {
+            g.setColour (Colours::white.withAlpha (0.85f));
+            g.drawEllipse (p.x - rad - 5, p.y - rad - 5, rad * 2 + 10, rad * 2 + 10, 1.3f);
+        }
     }
+    g.setColour (SauceColours::textDim); g.setFont (SauceFonts::regular (12.5f));
+    g.drawText ("Double-click empty space to add a band (up to 12)", Rectangle<float> (r.getX() + 8, r.getBottom() - 20, 360, 16), Justification::left);
 }
 
 void EqPlot::mouseDown (const MouseEvent& e)
 {
     dragging = -1; float best = 22.0f;
-    for (int b = 0; b < 6; ++b) { const float d = nodePos (b).getDistanceFrom (e.position); if (d < best) { best = d; dragging = b; } }
+    for (int b = 0; b < sauce::ParametricEQ::kBands; ++b) { if (! isShown (b)) continue; const float d = nodePos (b).getDistanceFrom (e.position); if (d < best) { best = d; dragging = b; } }
     if (dragging >= 0)
     {
         selected = dragging; if (onSelect) onSelect (selected);
@@ -176,8 +213,21 @@ void EqPlot::mouseUp (const MouseEvent&)
 
 void EqPlot::mouseDoubleClick (const MouseEvent& e)
 {
-    for (int b = 0; b < 6; ++b)
-        if (nodePos (b).getDistanceFrom (e.position) < 18.0f) { setParam (b, "on", param (b, "on") > 0.5f ? 0.0f : 1.0f); repaint(); return; }
+    for (int b = 0; b < sauce::ParametricEQ::kBands; ++b)
+        if (isShown (b) && nodePos (b).getDistanceFrom (e.position) < 18.0f) { setParam (b, "on", param (b, "on") > 0.5f ? 0.0f : 1.0f); repaint(); return; }
+    // empty space: add the next free band (7-12) right there as a bell
+    auto r = plotArea();
+    if (! r.contains (e.position)) return;
+    for (int b = 6; b < sauce::ParametricEQ::kBands; ++b)
+        if (param (b, "on") < 0.5f)
+        {
+            setParam (b, "type", 0); setParam (b, "q", 1.4f);
+            setParam (b, "freq", jlimit (20.0f, 20000.0f, freqForX (e.position.x)));
+            setParam (b, "gain", jlimit (-18.0f, 18.0f, dbForY (e.position.y)));
+            setParam (b, "on", 1);
+            selected = b; if (onSelect) onSelect (b);
+            repaint(); return;
+        }
 }
 
 void EqPlot::mouseWheelMove (const MouseEvent&, const MouseWheelDetails& w)
@@ -210,17 +260,41 @@ EqPage::EqPage (SauceProcessor& p) : proc (p), plot (p)
     abBtn.onClick = [this] { applyAB(); };
     for (auto* c : { (Component*) &soloBtn, (Component*) eqPower.get(), (Component*) &abBtn, (Component*) &fullBtn }) addAndMakeVisible (c);
 
-    for (int b = 0; b < 6; ++b) bandBox.addItem ("Band " + String (b + 1), b + 1);
+    for (int b = 0; b < sauce::ParametricEQ::kBands; ++b) bandBox.addItem ("Band " + String (b + 1), b + 1);
     bandBox.onChange = [this] { selectBand (bandBox.getSelectedId() - 1); };
     typeBox.addItemList (ParamChoices::bandTypes, 1);
-    bandTrash.setTooltip ("Reset this band to flat");
+    bandTrash.setTooltip ("Reset this band (bands 7-12 are removed)");
     bandTrash.onClick = [this]
     {
-        for (auto* w : { "type", "freq", "gain", "q", "on" })
+        for (auto* w : { "type", "freq", "gain", "q", "dyn", "thr", "on" })
             if (auto* prm = proc.apvts.getParameter (ParamIDs::band (plot.selected, w))) prm->setValueNotifyingHost (prm->getDefaultValue());
     };
+    dynK.slider.setTooltip ("Dynamic: how far this band's gain moves while the band is above the threshold (negative = cut when it gets loud, like Pro-Q's dynamic EQ). 0 = static.");
+    thrK.slider.setTooltip ("Dynamic threshold: the band starts moving above this level.");
     for (auto* c : { (Component*) &bandBox, (Component*) &typeBox, (Component*) &freqK, (Component*) &gainK, (Component*) &qK,
-                     (Component*) &bandSolo, (Component*) &bandTrash }) addAndMakeVisible (c);
+                     (Component*) &dynK, (Component*) &thrK, (Component*) &bandSolo, (Component*) &bandTrash }) addAndMakeVisible (c);
+
+    // resonance suppressor controls share the bottom row (toggle with the RESONANCE button)
+    resBtn.setClickingTogglesState (true);
+    resBtn.getProperties().set ("fontScale", 0.42f);
+    resBtn.setTooltip ("Smart resonance suppressor: finds harsh, ringing frequencies as you sing and dips them only while they ring (like Soothe)");
+    resBtn.onClick = [this] { showRes = resBtn.getToggleState(); resized(); repaint(); };
+    addAndMakeVisible (resBtn);
+    resPower = std::make_unique<PowerButton> (proc.apvts, ParamIDs::resOn);
+    resPower->setTooltip ("Resonance suppressor on/off");
+    addChildComponent (*resPower);
+    const std::pair<InlineKnob*, String> rk[] = { { &resDepthK, ParamIDs::resDepth }, { &resSharpK, ParamIDs::resSharp }, { &resSelK, ParamIDs::resSelect },
+                                                  { &resSpeedK, ParamIDs::resSpeed }, { &resLoK, ParamIDs::resLo }, { &resHiK, ParamIDs::resHi } };
+    for (auto& [k, id] : rk) { k->attach (proc.apvts, id); addChildComponent (k); }
+    resDepthK.slider.setTooltip ("Most it will ever cut a resonance");
+    resSharpK.slider.setTooltip ("Narrow (high) or broad (low) cuts");
+    resSelK.slider.setTooltip ("Higher = only the most obvious resonances are touched");
+    resSpeedK.slider.setTooltip ("How fast it reacts and lets go");
+    resDelta.setClickingTogglesState (true);
+    resDelta.getProperties().set ("fontScale", 0.42f);
+    resDeltaAtt = std::make_unique<ButtonAtt> (proc.apvts, ParamIDs::resDelta, resDelta);
+    resDelta.setTooltip ("Delta: hear only what the suppressor removes");
+    addChildComponent (resDelta);
     selectBand (2);
     startTimerHz (30);
 }
@@ -229,13 +303,15 @@ EqPage::~EqPage() { proc.setBandSolo (-1); }
 
 void EqPage::selectBand (int b)
 {
-    b = jlimit (0, 5, b);
+    b = jlimit (0, sauce::ParametricEQ::kBands - 1, b);
     plot.selected = b;
     bandBox.setSelectedId (b + 1, dontSendNotification);
     typeAtt.reset(); typeAtt = std::make_unique<ComboAtt> (proc.apvts, ParamIDs::band (b, "type"), typeBox);
     freqK.attach (proc.apvts, ParamIDs::band (b, "freq"));
     gainK.attach (proc.apvts, ParamIDs::band (b, "gain"));
     qK.attach (proc.apvts, ParamIDs::band (b, "q"));
+    dynK.attach (proc.apvts, ParamIDs::band (b, "dyn"));
+    thrK.attach (proc.apvts, ParamIDs::band (b, "thr"));
     bandPower.reset (new PowerButton (proc.apvts, ParamIDs::band (b, "on")));
     bandPower->setTooltip ("Band " + String (b + 1) + " on/off");
     addAndMakeVisible (*bandPower);
@@ -248,7 +324,7 @@ void EqPage::applyAB()
     auto snapshot = [this]
     {
         ValueTree t ("EQAB");
-        for (int b = 0; b < 6; ++b) for (auto* w : { "on", "type", "freq", "gain", "q" })
+        for (int b = 0; b < sauce::ParametricEQ::kBands; ++b) for (auto* w : { "on", "type", "freq", "gain", "q", "dyn", "thr" })
             t.setProperty (ParamIDs::band (b, w), proc.reader.get (ParamIDs::band (b, w)), nullptr);
         return t;
     };
@@ -274,32 +350,45 @@ void EqPage::timerCallback()
 void EqPage::paint (Graphics& g)
 {
     g.setColour (SauceColours::neonHi); g.setFont (SauceFonts::bold (26.0f));
-    g.drawText ("EQ", 28, 6, 60, 34, Justification::centredLeft);
+    SauceDraw::tagText (g, "EQ", 28, 34, 30.0f, false);
     g.setColour (SauceColours::text); g.setFont (SauceFonts::medium (17.0f));
     g.drawText ("Surgical Equalizer", 92, 6, 170, 34, Justification::centredLeft);
     auto row = Rectangle<float> (14, (float) getHeight() - 74, (float) getWidth() - 28, 64);
     SauceDraw::panel (g, row, 8);
-    g.setColour (SauceColours::border); g.drawVerticalLine (1112, row.getY() + 12, row.getBottom() - 12);
-    g.setColour (SauceColours::text); g.setFont (SauceFonts::medium (17.0f));
-    g.drawText ("Type", 232, (int) row.getY() + 2, 60, 20, Justification::centredLeft);
+    g.setColour (SauceColours::text); g.setFont (SauceFonts::medium (15.0f));
+    if (showRes) g.drawText ("RESONANCE", 84, (int) row.getY() + 2, 140, 60, Justification::centredLeft);
+    else g.drawText ("Type", 206, (int) row.getY() + 2, 60, 20, Justification::centredLeft);
 }
 
 void EqPage::resized()
 {
     const int w = getWidth(), h = getHeight();
     viewToggle.setBounds (246, 8, 210, 32);
+    resBtn.setBounds (470, 8, 150, 32);
     soloBtn.setBounds (w - 214, 7, 44, 34);
     if (eqPower) eqPower->setBounds (w - 162, 7, 44, 34);
     abBtn.setBounds (w - 110, 7, 50, 34);
     fullBtn.setBounds (w - 54, 7, 40, 34);
     plot.setBounds (0, 46, w, h - 46 - 84);
     const int ry = h - 74;
-    bandBox.setBounds (30, ry + 14, 164, 36);
-    typeBox.setBounds (228, ry + 22, 194, 34);
-    freqK.setBounds (460, ry + 4, 200, 56);
-    gainK.setBounds (680, ry + 4, 200, 56);
-    qK.setBounds (890, ry + 4, 200, 56);
-    bandSolo.setBounds (w - 210, ry + 13, 46, 38);
-    if (bandPower) bandPower->setBounds (w - 154, ry + 13, 46, 38);
-    bandTrash.setBounds (w - 98, ry + 13, 46, 38);
+    for (auto* c : { (Component*) &bandBox, (Component*) &typeBox, (Component*) &freqK, (Component*) &gainK, (Component*) &qK,
+                     (Component*) &dynK, (Component*) &thrK, (Component*) &bandSolo, (Component*) &bandTrash, (Component*) bandPower.get() })
+        if (c != nullptr) c->setVisible (! showRes);
+    for (auto* c : { (Component*) resPower.get(), (Component*) &resDepthK, (Component*) &resSharpK, (Component*) &resSelK, (Component*) &resSpeedK,
+                     (Component*) &resLoK, (Component*) &resHiK, (Component*) &resDelta })
+        c->setVisible (showRes);
+    bandBox.setBounds (26, ry + 14, 150, 36);
+    typeBox.setBounds (202, ry + 22, 170, 34);
+    freqK.setBounds (380, ry + 4, 160, 56);
+    gainK.setBounds (544, ry + 4, 160, 56);
+    qK.setBounds (708, ry + 4, 150, 56);
+    dynK.setBounds (862, ry + 4, 160, 56);
+    thrK.setBounds (1026, ry + 4, 160, 56);
+    bandSolo.setBounds (w - 152, ry + 13, 42, 38);
+    if (bandPower) bandPower->setBounds (w - 106, ry + 13, 42, 38);
+    bandTrash.setBounds (w - 60, ry + 13, 42, 38);
+    if (resPower) resPower->setBounds (30, ry + 13, 44, 38);
+    int x = 196;
+    for (auto* k : { &resDepthK, &resSharpK, &resSelK, &resSpeedK, &resLoK, &resHiK }) { k->setBounds (x, ry + 4, 160, 56); x += 164; }
+    resDelta.setBounds (w - 120, ry + 16, 100, 34);
 }

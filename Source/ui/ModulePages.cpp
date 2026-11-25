@@ -1,4 +1,5 @@
 #include "ModulePages.h"
+#include "LinkMenu.h"
 
 using namespace juce;
 using namespace ParamIDs;
@@ -99,20 +100,23 @@ void GatePage::paintContent (Graphics& g)
 //==============================================================================
 TunePage::TunePage (SauceProcessor& p, const UiState& u)
     : ModulePage (p, u, "AUTO TUNE", "Key-aware pitch correction for a single lead vocal", tuneOn),
-      speed (p.apvts, tuneSpeed, "Retune Speed"), amount (p.apvts, tuneAmount, "Amount"), humanize (p.apvts, tuneHumanize, "Humanize")
+      speed (p.apvts, tuneSpeed, "Retune Speed"), amount (p.apvts, tuneAmount, "Amount"), humanize (p.apvts, tuneHumanize, "Humanize"),
+      smooth (p.apvts, tuneSmooth, "Smoothness")
 {
     key.addItemList (ParamChoices::keys, 1); scale.addItemList (ParamChoices::scales, 1);
     keyAtt = std::make_unique<ComboAtt> (p.apvts, tuneKey, key);
     scaleAtt = std::make_unique<ComboAtt> (p.apvts, tuneScale, scale);
     key.setTooltip ("Key of the song"); scale.setTooltip ("Scale. Chromatic corrects to the nearest semitone.");
     natural.setTooltip ("Subtle, natural correction"); hard.setTooltip ("Instant, obvious hard-tuned melodic-rap sound");
-    natural.onClick = [this] { proc.setParam (tuneOn, 1); proc.setParam (tuneSpeed, 45); proc.setParam (tuneAmount, 70); proc.setParam (tuneHumanize, 45); };
-    hard.onClick    = [this] { proc.setParam (tuneOn, 1); proc.setParam (tuneSpeed, 0); proc.setParam (tuneAmount, 100); proc.setParam (tuneHumanize, 0); };
+    natural.onClick = [this] { proc.setParam (tuneOn, 1); proc.setParam (tuneSpeed, 45); proc.setParam (tuneAmount, 70); proc.setParam (tuneHumanize, 45); proc.setParam (tuneSmooth, 60); };
+    hard.onClick    = [this] { proc.setParam (tuneOn, 1); proc.setParam (tuneSpeed, 0); proc.setParam (tuneAmount, 100); proc.setParam (tuneHumanize, 0); proc.setParam (tuneSmooth, 0); };
+    smooth.setTooltip ("Smoothness: tunes the centre of each note and lets your vibrato and slides ride on top, with soft S-curve glides between notes. "
+                       "Has no effect at hard-tune speeds (under 15 ms), so the hard-tune sound stays hard.");
     autoKey.setClickingTogglesState (true);
     autoKeyAtt = std::make_unique<ButtonAtt> (p.apvts, ParamIDs::autoKey, autoKey);
     autoKey.setTooltip ("Auto Key: listens to your vocal (and the beat, if routed) and sets Key and Scale for you. "
                         "It runs in the background analysis, so it adds no latency. Turn it off to lock the key.");
-    for (auto* c : { (Component*) &key, (Component*) &scale, (Component*) &natural, (Component*) &hard, (Component*) &autoKey, (Component*) &speed, (Component*) &amount, (Component*) &humanize })
+    for (auto* c : { (Component*) &key, (Component*) &scale, (Component*) &natural, (Component*) &hard, (Component*) &autoKey, (Component*) &speed, (Component*) &amount, (Component*) &humanize, (Component*) &smooth })
         addAndMakeVisible (c);
 }
 
@@ -127,7 +131,7 @@ void TunePage::layoutContent()
     c.removeFromTop (10);
     autoKey.setBounds (c.removeFromTop (34).removeFromLeft (130));
     c.removeFromTop (10);
-    placeKnobs ({ &speed, &amount, &humanize }, c.removeFromTop (170));
+    placeKnobs ({ &speed, &amount, &humanize, &smooth }, c.removeFromTop (170));
 }
 
 void TunePage::paintContent (Graphics& g)
@@ -252,6 +256,42 @@ MatchPage::MatchPage (SauceProcessor& p, const UiState& u)
         status = "Match applied. Use A/B to compare, or adjust Strength / Smoothing / Max Boost-Cut.";
     };
     reset.onClick = [this] { proc.analysis.resetMatch(); status = "Match EQ reset."; };
+    linkBtn.getProperties().set ("fontScale", 0.4f);
+    linkBtn.setTooltip ("Read a reference vocal from another track in your DAW without sidechaining: put The Sauce Suite on that track, "
+                        "choose 'Send as reference vocal' there, pick it here, then press Capture Reference while it plays.");
+    linkBtn.onClick = [this] { LinkMenu::show (proc, &linkBtn, [this] { status = proc.getLinkSource().isNotEmpty() ? "Linked to " + proc.getLinkSource() + ". Press Capture Reference while it plays." : String(); repaint(); }); };
+    addAndMakeVisible (linkBtn);
+}
+
+bool MatchPage::isInterestedInFileDrag (const StringArray& files)
+{
+    for (auto& f : files) if (File (f).hasFileExtension ("wav;mp3;flac;aif;aiff;ogg")) return true;
+    return false;
+}
+
+void MatchPage::filesDropped (const StringArray& files, int, int)
+{
+    dragOver = false;
+    for (auto& f : files)
+        if (File (f).hasFileExtension ("wav;mp3;flac;aif;aiff;ogg"))
+        {
+            String err;
+            status = proc.analysis.loadReferenceFile (File (f), err) ? "Reference loaded: " + File (f).getFileName() + " (sung notes only)" : err;
+            break;
+        }
+    repaint();
+}
+
+void MatchPage::paintOverChildren (Graphics& g)
+{
+    if (! dragOver) return;
+    auto d = getLocalBounds().toFloat().reduced (16);
+    g.setColour (Colour (0xe0081018)); g.fillRoundedRectangle (d, 14);
+    Path p; p.addRoundedRectangle (d.reduced (8), 12);
+    Path dashed; const float dl[] = { 14, 9 }; PathStrokeType (3.0f).createDashedStroke (dashed, p, dl, 2);
+    g.setColour (SauceColours::neonHi); g.fillPath (dashed);
+    g.setFont (SauceFonts::bold (30.0f));
+    g.drawText ("DROP A REFERENCE VOCAL HERE", d, Justification::centred);
 }
 
 void MatchPage::layoutContent()
@@ -262,7 +302,9 @@ void MatchPage::layoutContent()
     c.removeFromTop (8);
     auto r2 = c.removeFromTop (40);
     apply.setBounds (r2.removeFromLeft (w).reduced (3, 0)); ab.setBounds (r2.removeFromLeft (w).reduced (3, 0)); reset.setBounds (r2.reduced (3, 0));
-    c.removeFromTop (70);
+    c.removeFromTop (8);
+    linkBtn.setBounds (c.removeFromTop (36).removeFromLeft (w * 2).reduced (3, 0));
+    c.removeFromTop (26);
     placeKnobs ({ &strength, &smooth, &limit }, c.removeFromTop (130));
 }
 
@@ -430,16 +472,24 @@ void FxPage::paintContent (Graphics& g)
 
 //==============================================================================
 LimiterPage::LimiterPage (SauceProcessor& p, const UiState& u)
-    : ModulePage (p, u, "LIMITER", "Final output ceiling - after the delay and reverb returns", limOn),
-      ceiling (p.apvts, limCeiling, "Ceiling"), release (p.apvts, limRelease, "Release")
+    : ModulePage (p, u, "LIMITER", "Ceiling, drive and character - drag the tab to move it in the chain", limOn),
+      drive (p.apvts, limDrive, "Drive"), ceiling (p.apvts, limCeiling, "Ceiling"), release (p.apvts, limRelease, "Release")
 {
-    for (auto* k : { &ceiling, &release }) addAndMakeVisible (k);
+    character.addItemList (ParamChoices::limCharacters, 1);
+    characterAtt = std::make_unique<ComboAtt> (p.apvts, limCharacter, character);
+    character.setTooltip ("Clean: transparent. Punchy: faster release for more impact. Loud: rounds peaks off with a soft clipper first, for more volume.");
+    drive.setTooltip ("Pushes the vocal into the limiter: more drive = louder and more squashed.");
+    ceiling.setTooltip ("Highest level the limiter lets out (down to -30 dB). At the end of the chain nothing goes over it.");
+    for (auto* k : { (Component*) &drive, (Component*) &ceiling, (Component*) &release, (Component*) &character }) addAndMakeVisible (k);
 }
 
 void LimiterPage::layoutContent()
 {
     auto c = controlArea().withTrimmedRight (90);
-    placeKnobs ({ &ceiling, &release }, c.removeFromTop (180).reduced (40, 0));
+    auto top = c.removeFromTop (40);
+    character.setBounds (top.removeFromLeft (220));
+    c.removeFromTop (10);
+    placeKnobs ({ &drive, &ceiling, &release }, c.removeFromTop (180));
 }
 
 void LimiterPage::paintContent (Graphics& g)
@@ -453,15 +503,105 @@ void LimiterPage::paintContent (Graphics& g)
     for (int i = 0; i < UiState::kHist; ++i)
     {
         const float x = pr.getX() + pr.getWidth() * (float) i / (UiState::kHist - 1);
-        const float y = jmap (jlimit (-12.0f, 0.0f, ui.at (ui.hLim, i)), 0.0f, -12.0f, pr.getY(), pr.getY() + pr.getHeight() * 0.5f);
+        const float y = jmap (jlimit (-24.0f, 0.0f, ui.at (ui.hLim, i)), 0.0f, -24.0f, pr.getY(), pr.getY() + pr.getHeight() * 0.6f);
         if (i == 0) gp.startNewSubPath (x, y); else gp.lineTo (x, y);
     }
     SauceDraw::glowPath (g, gp, Colours::white, 2.0f, 6);
     const float ce = proc.reader.get (limCeiling);
-    const float y = jmap (ce, -36.0f, 0.0f, pr.getBottom(), pr.getY());
+    const float y = jmap (jlimit (-36.0f, 0.0f, ce), -36.0f, 0.0f, pr.getBottom(), pr.getY());
     g.setColour (Colour (0xffff4d5e)); g.drawHorizontalLine ((int) y, pr.getX(), pr.getRight());
     g.setFont (SauceFonts::medium (13.0f)); g.setColour (SauceColours::text);
-    g.drawText ("Ceiling " + String (ce, 1) + " dB   White: gain reduction   Blue: output level", Rectangle<float> (pr.getX() + 50, pr.getY(), 500, 18), Justification::left);
+    g.drawText ("Ceiling " + String (ce, 1) + " dB   White: gain reduction   Blue: output level", Rectangle<float> (pr.getX() + 50, pr.getY(), 520, 18), Justification::left);
+    const bool last = proc.getChainOrder().endsWithChar ('L');
+    g.setColour (last ? SauceColours::textDim : Colour (0xffffb020));
+    g.drawText (last ? "Last in the chain: nothing leaves the plugin above the ceiling."
+                     : "Moved inside the chain: later modules (delay, reverb...) can go above the ceiling.",
+                Rectangle<float> (pr.getX() + 50, pr.getY() + 20, 620, 18), Justification::left);
     auto c = controlArea().toFloat();
     grMeter (g, c.withLeft (c.getRight() - 60).withWidth (34).withHeight (230).translated (0, 20), ui.limGrDb, "GR");
+}
+
+//==============================================================================
+DeessPage::DeessPage (SauceProcessor& p, const UiState& u)
+    : ModulePage (p, u, "DE-ESSER", "Tames harsh S, T and SH sounds without dulling the voice", deessOn),
+      freq (p.apvts, deessFreq, "Frequency"), thresh (p.apvts, deessThresh, "Threshold"), range (p.apvts, deessRange, "Max Reduction")
+{
+    listen.setClickingTogglesState (true);
+    listenAtt = std::make_unique<ButtonAtt> (p.apvts, deessListen, listen);
+    listen.setTooltip ("Hear only the band the de-esser works on, to find the harsh S's. Turn it off when you're done.");
+    freq.setTooltip ("Where the S's are: around 5-8 kHz for most voices (lower for deep voices, higher for bright ones). Only sound above this is reduced.");
+    thresh.setTooltip ("Lower = de-esses more often.");
+    range.setTooltip ("The most it will ever turn the S's down.");
+    for (auto* c : { (Component*) &freq, (Component*) &thresh, (Component*) &range, (Component*) &listen }) addAndMakeVisible (c);
+}
+
+void DeessPage::layoutContent()
+{
+    auto c = controlArea().withTrimmedRight (90);
+    listen.setBounds (c.removeFromTop (40).removeFromLeft (130));
+    c.removeFromTop (10);
+    placeKnobs ({ &freq, &thresh, &range }, c.removeFromTop (180));
+}
+
+void DeessPage::paintContent (Graphics& g)
+{
+    auto r = graphArea().toFloat();
+    drawGraphFrame (g, r);
+    auto pr = r.reduced (10, 12);
+    dbGrid (g, pr, -24, 0, 6);
+    Path gp;
+    for (int i = 0; i < UiState::kHist; ++i)
+    {
+        const float x = pr.getX() + pr.getWidth() * (float) i / (UiState::kHist - 1);
+        const float y = jmap (jlimit (-24.0f, 0.0f, ui.at (ui.hDeess, i)), -24.0f, 0.0f, pr.getBottom(), pr.getY());
+        if (i == 0) gp.startNewSubPath (x, y); else gp.lineTo (x, y);
+    }
+    Path fill (gp); fill.lineTo (pr.getRight(), pr.getY()); fill.lineTo (pr.getX(), pr.getY()); fill.closeSubPath();
+    g.setColour (SauceColours::neon.withAlpha (0.25f)); g.fillPath (fill);
+    SauceDraw::glowPath (g, gp, SauceColours::neonHi, 2.2f, 6);
+    g.setFont (SauceFonts::medium (13.0f)); g.setColour (SauceColours::text);
+    const bool listening = proc.reader.get (deessListen) > 0.5f;
+    g.drawText (listening ? "LISTEN is on: you're hearing only the S band" : "S reduction over time (deeper = more de-essing)",
+                Rectangle<float> (pr.getX() + 50, pr.getBottom() - 22, 520, 18), Justification::left);
+    auto c = controlArea().toFloat();
+    grMeter (g, c.withLeft (c.getRight() - 60).withWidth (34).withHeight (230).translated (0, 20), ui.deessGrDb, "S cut");
+}
+
+//==============================================================================
+PlosivePage::PlosivePage (SauceProcessor& p, const UiState& u)
+    : ModulePage (p, u, "DE-POP", "Plosive filter - catches P and B pops and mic air blasts", popOn),
+      sens (p.apvts, popSens, "Sensitivity"), freq (p.apvts, popFreq, "Frequency"), depth (p.apvts, popDepth, "Max Reduction")
+{
+    sens.setTooltip ("Higher = catches softer pops. Too high can thin out deep words.");
+    freq.setTooltip ("Only sound below this is reduced when a pop hits (the thump of a P or B lives under ~150-250 Hz).");
+    depth.setTooltip ("The most a pop is turned down.");
+    for (auto* k : { &sens, &freq, &depth }) addAndMakeVisible (k);
+}
+
+void PlosivePage::layoutContent()
+{
+    auto c = controlArea().withTrimmedRight (90);
+    c.removeFromTop (50);
+    placeKnobs ({ &sens, &freq, &depth }, c.removeFromTop (180));
+}
+
+void PlosivePage::paintContent (Graphics& g)
+{
+    auto r = graphArea().toFloat();
+    drawGraphFrame (g, r);
+    auto pr = r.reduced (10, 12);
+    dbGrid (g, pr, -30, 0, 6);
+    historyPath (g, ui, ui.hIn, pr.withTrimmedBottom (pr.getHeight() * 0.5f), -60, 0, SauceColours::neon.withAlpha (0.6f), true);
+    Path gp;
+    for (int i = 0; i < UiState::kHist; ++i)
+    {
+        const float x = pr.getX() + pr.getWidth() * (float) i / (UiState::kHist - 1);
+        const float y = jmap (jlimit (-30.0f, 0.0f, ui.at (ui.hPop, i)), -30.0f, 0.0f, pr.getBottom(), pr.getY());
+        if (i == 0) gp.startNewSubPath (x, y); else gp.lineTo (x, y);
+    }
+    SauceDraw::glowPath (g, gp, Colours::white, 2.2f, 6);
+    g.setFont (SauceFonts::medium (13.0f)); g.setColour (SauceColours::text);
+    g.drawText ("White: pops caught (dips = low end pulled down for a moment)", Rectangle<float> (pr.getX() + 50, pr.getBottom() - 22, 560, 18), Justification::left);
+    auto c = controlArea().toFloat();
+    grMeter (g, c.withLeft (c.getRight() - 60).withWidth (34).withHeight (230).translated (0, 20), ui.popGrDb, "Pop cut");
 }

@@ -93,6 +93,7 @@ bool PresetManager::load (int index)
     }
     proc.analysis.setAppliedRaw (matchRaw);
     proc.presetName = p.name;
+    proc.updateRole();
     proc.presetDirty = false;
     proc.markLoading (false);
     proc.undo.clearUndoHistory();

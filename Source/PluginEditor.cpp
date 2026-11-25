@@ -24,26 +24,25 @@ void TabButton::paintButton (Graphics& g, bool over, bool)
         g.fillRoundedRectangle (r, 9);
         g.setColour (over ? Colour (0xff6a7482) : Colour (0xff3a414c)); g.drawRoundedRectangle (r, 9, 1.3f);
     }
-    const auto font = SauceFonts::medium (20.0f);
-    const float tw = GlyphArrangement::getStringWidth (font, getButtonText());
-    const float total = 34 + 12 + tw + (hasCaret ? 22 : 0);
-    float x = r.getCentreX() - total * 0.5f;
-    auto ic = SauceDraw::icon (iconName, { x, r.getCentreY() - 14, 30, 28 });
+    // compact layout (ten tabs): icon on top, label underneath
+    auto ic = SauceDraw::icon (iconName, { r.getCentreX() - 13, r.getY() + 7, 26, 22 });
     if (sel) SauceDraw::glowPath (g, ic, SauceColours::neonHi, 2.2f, 6);
     else { g.setColour (SauceColours::text); g.strokePath (ic, PathStrokeType (2.0f, PathStrokeType::curved, PathStrokeType::rounded)); }
-    x += 46;
+    const auto font = SauceFonts::bold (14.5f);
     g.setFont (font); g.setColour (sel ? SauceColours::neonHi : SauceColours::text);
-    g.drawText (getButtonText(), Rectangle<float> (x, r.getY(), tw + 4, r.getHeight()), Justification::centredLeft);
+    g.drawText (getButtonText().toUpperCase(), r.withTrimmedTop (r.getHeight() - 24).withTrimmedBottom (4), Justification::centred);
     if (hasCaret)
+        g.strokePath (SauceDraw::icon ("chevron", { r.getRight() - 20, r.getY() + 12, 11, 9 }), PathStrokeType (1.8f));
+    if (dragging)
     {
-        g.strokePath (SauceDraw::icon ("chevron", { x + tw + 10, r.getCentreY() - 5, 12, 10 }), PathStrokeType (1.8f));
+        g.setColour (SauceColours::neonHi.withAlpha (0.18f)); g.fillRoundedRectangle (r, 9);
     }
     // module status LED
     if (param.isNotEmpty())
     {
         const bool on = proc.reader.get (param) > 0.5f;
         g.setColour (on ? SauceColours::neonHi : Colour (0xff3a414c));
-        g.fillEllipse (r.getRight() - 14, r.getY() + 8, 6, 6);
+        g.fillEllipse (r.getX() + 8, r.getY() + 8, 6, 6);
     }
 }
 
@@ -66,14 +65,14 @@ void TabButton::mouseUp (const MouseEvent& e)
         if (onDragEnd) onDragEnd();
         return;
     }
-    if (hasCaret && e.x > getWidth() - 42 && onCaret && getLocalBounds().contains (e.getPosition())) { onCaret(); return; }
+    if (hasCaret && e.x > getWidth() - 30 && e.y < 30 && onCaret && getLocalBounds().contains (e.getPosition())) { onCaret(); return; }
     Button::mouseUp (e);
 }
 
 //==============================================================================
 SauceEditor::SauceEditor (SauceProcessor& p)
     : AudioProcessorEditor (p), proc (p), header (p),
-      eqPage (p), gatePage (p, ui), tunePage (p, ui), matchPage (p, ui), compPage (p, ui), fxPage (p, ui), limPage (p, ui),
+      eqPage (p), gatePage (p, ui), tunePage (p, ui), matchPage (p, ui), compPage (p, ui), fxPage (p, ui), limPage (p, ui), deessPage (p, ui), popPage (p, ui),
       delay (p, ui), reverb (p, ui), routing (p), coach (p), metersPanel (p, ui), bottom (p, ui), assistantPanel (p)
 {
     setLookAndFeel (&lnf);
@@ -84,42 +83,42 @@ SauceEditor::SauceEditor (SauceProcessor& p)
     content.addAndMakeVisible (header);
     struct T { const char* name; const char* icon; String param; bool caret; };
     const T defs[] = { { "Gate", "gate", ParamIDs::gateOn, false }, { "Auto Tune", "tune", ParamIDs::tuneOn, false }, { "EQ", "eq", ParamIDs::eqOn, false },
-                       { "Match EQ", "match", ParamIDs::matchOn, false }, { "Compressor", "comp", ParamIDs::compOn, false },
-                       { "Vocal FX", "fx", {}, true }, { "Limiter", "limiter", ParamIDs::limOn, false } };
-    for (int i = 0; i < 7; ++i)
+                       { "Match EQ", "match", ParamIDs::matchOn, false }, { "Comp", "comp", ParamIDs::compOn, false },
+                       { "Vocal FX", "fx", {}, true }, { "Limiter", "limiter", ParamIDs::limOn, false },
+                       { "De-Ess", "deess", ParamIDs::deessOn, false }, { "Delay", "delay", ParamIDs::dlyOn, false }, { "Reverb", "reverb", ParamIDs::revOn, false },
+                       { "De-Pop", "pop", ParamIDs::popOn, false } };
+    for (int i = 0; i < kNumTabs; ++i)
     {
         auto* t = tabs.add (new TabButton (defs[i].name, defs[i].icon, defs[i].param, p, defs[i].caret));
         t->setRadioGroupId (77);
         t->onClick = [this, i] { selectTab (i); };
         content.addAndMakeVisible (t);
-        if (i < 6)
+        t->movable = true;
+        t->setTooltip ("Click to open. Drag left/right to move this module in the vocal chain: the signal goes through the tabs from left to right.");
+        t->onDragMove = [this, i] (const MouseEvent& e)
         {
-            t->movable = true;
-            t->setTooltip ("Click to open. Drag left/right to change where this module sits in the vocal chain.");
-            t->onDragMove = [this, i] (const MouseEvent& e)
-            {
-                auto* tb = tabs[i];
-                const auto pos = e.getEventRelativeTo (&content).position;
-                if (draggingTab != i) { draggingTab = i; workingOrder = proc.getChainOrder(); dragGrab = e.getMouseDownX(); tb->toFront (false); }
-                dragX = pos.x - dragGrab;
-                const int slotW = 194, x0 = 20;
-                const int target = jlimit (0, 5, roundToInt ((dragX - (float) x0) / (float) slotW));
-                const auto letter = String ("GTEMCS")[i];
-                String o = workingOrder.removeCharacters (String::charToString (letter));
-                workingOrder = o.substring (0, target) + String::charToString (letter) + o.substring (target);
-                layoutTabs();
-            };
-            t->onDragEnd = [this]
-            {
-                draggingTab = -1;
-                proc.setChainOrder (workingOrder);
-                shownOrder = workingOrder;
-                layoutTabs(); content.repaint();
-            };
-        }
+            auto* tb = tabs[i];
+            const auto pos = e.getEventRelativeTo (&content).position;
+            if (draggingTab != i) { draggingTab = i; workingOrder = proc.getChainOrder(); dragGrab = e.getMouseDownX(); tb->toFront (false); }
+            dragX = pos.x - dragGrab;
+            const int target = jlimit (0, kNumTabs - 1, roundToInt ((dragX - (float) kTabX0) / (float) kTabSlot));
+            const auto letter = kTabLetters[i];
+            String o = workingOrder.removeCharacters (String::charToString (letter));
+            workingOrder = o.substring (0, target) + String::charToString (letter) + o.substring (target);
+            layoutTabs();
+        };
+        t->onDragEnd = [this]
+        {
+            draggingTab = -1;
+            proc.setChainOrder (workingOrder);
+            shownOrder = workingOrder;
+            layoutTabs(); content.repaint();
+        };
     }
-    tabs[6]->setTooltip ("The Limiter is always last, after the delay and reverb, so nothing goes over the ceiling.");
-    tabs[5]->setTooltip ("Saturation, doubler and width. Click the arrow to switch each effect on or off.");
+    tabs[6]->setTooltip ("Limiter: drag it anywhere. At the far right (default) nothing leaves the plugin above the ceiling.");
+    tabs[5]->setTooltip ("Saturation, doubler and width. Click the small arrow to switch each effect on or off. Drag to move it in the chain.");
+    tabs[8]->setTooltip ("Delay (controls in the DELAY panel below). Drag to move it: e.g. put it after the reverb to echo the reverb.");
+    tabs[9]->setTooltip ("Reverb (controls in the REVERB panel below). Drag to move it: e.g. before the delay so the echoes stay dry.");
     tabs[5]->onCaret = [this]
     {
         PopupMenu m;
@@ -135,7 +134,7 @@ SauceEditor::SauceEditor (SauceProcessor& p)
     };
 
     for (auto* c : { (Component*) &eqPage, (Component*) &gatePage, (Component*) &tunePage, (Component*) &matchPage, (Component*) &compPage,
-                     (Component*) &fxPage, (Component*) &limPage })
+                     (Component*) &fxPage, (Component*) &limPage, (Component*) &deessPage, (Component*) &popPage })
         content.addChildComponent (c);
     eqPage.onFullscreen = [this] (bool f) { setFullscreenEq (f); };
     for (auto* c : { (Component*) &delay, (Component*) &reverb, (Component*) &routing, (Component*) &coach, (Component*) &metersPanel, (Component*) &bottom })
@@ -178,7 +177,7 @@ void SauceEditor::layoutContent()
     toast.setBounds (300, 172, 790, 78);
     assistantPanel.setBounds (250, 120, 1220, 700);
     const auto mp = eqFull ? kMainPanelFull : kMainPanel;
-    for (int i = 0; i < 7; ++i) if (auto* pg = pageFor (i)) pg->setBounds (mp);
+    for (int i = 0; i < kNumTabs; ++i) if (auto* pg = pageFor (i)) pg->setBounds (mp);
     delay.setBounds (18, 579, 660, 226);
     reverb.setBounds (694, 579, 672, 226);
     routing.setBounds (1384, 92, 322, 222);
@@ -190,20 +189,19 @@ void SauceEditor::layoutContent()
 void SauceEditor::layoutTabs()
 {
     const String order = draggingTab >= 0 ? workingOrder : proc.getChainOrder();
-    const int x0 = 20, tw = 184, gap = 10;
-    for (int slot = 0; slot < 6; ++slot)
+    const int tw = kTabSlot - 8;
+    for (int slot = 0; slot < kNumTabs; ++slot)
     {
         const int t = tabForLetter (order[slot]);
         if (t < 0) continue;
-        if (t == draggingTab) tabs[t]->setBounds (jlimit (x0, x0 + 5 * (tw + gap), roundToInt (dragX)), 86, tw, 60);
-        else tabs[t]->setBounds (x0 + slot * (tw + gap), 90, tw, 60);
+        if (t == draggingTab) tabs[t]->setBounds (jlimit (kTabX0, kTabX0 + (kNumTabs - 1) * kTabSlot, roundToInt (dragX)), 86, tw, 62);
+        else tabs[t]->setBounds (kTabX0 + slot * kTabSlot, 90, tw, 62);
     }
-    tabs[6]->setBounds (x0 + 6 * (tw + gap) - 4, 90, tw, 60);
 }
 
 void SauceEditor::showPresetToast()
 {
-    static const char* names[] = { "Gate", "Tune", "EQ", "Match", "Comp", "Saturation" };
+    static const char* names[] = { "Gate", "Tune", "EQ", "Match", "Comp", "FX", "Limiter", "De-Ess", "Delay", "Reverb", "De-Pop" };
     String chain;
     for (auto c : proc.getChainOrder()) { const int t = tabForLetter (c); if (t >= 0) chain << (chain.isEmpty() ? "" : " > ") << names[t]; }
     auto on = [this] (const String& id) { return proc.reader.get (id) > 0.5f; };
@@ -214,7 +212,7 @@ void SauceEditor::showPresetToast()
     String dly = on (ParamIDs::dlyOn) ? ParamChoices::divisions[(int) proc.reader.get (ParamIDs::dlyDiv)]
                                          + (proc.reader.get (ParamIDs::dlyFeel) == 1 ? " dotted" : proc.reader.get (ParamIDs::dlyFeel) == 2 ? " triplet" : "") : String ("off");
     toast.show ("Loaded: " + proc.presetName,
-                "Chain: " + chain + "  >  FX  >  Delay + Reverb  >  Limiter\n"
+                "Chain: " + chain + "\n"
                 "Tune: " + tune + "   |   Comp " + String (proc.reader.get (ParamIDs::compRatio), 1) + ":1   |   Reverb: " + rev + "   |   Delay: " + dly
                 + "   |   Grit: " + (on (ParamIDs::satOn) ? String (roundToInt (proc.reader.get (ParamIDs::satMix))) + "%" : String ("off")));
 }
@@ -224,15 +222,21 @@ Component* SauceEditor::pageFor (int i)
     switch (i)
     {
         case 0: return &gatePage; case 1: return &tunePage; case 2: return &eqPage; case 3: return &matchPage;
-        case 4: return &compPage; case 5: return &fxPage; case 6: return &limPage; default: return nullptr;
+        case 4: return &compPage; case 5: return &fxPage; case 6: return &limPage; case 7: return &deessPage; case 10: return &popPage; default: return nullptr;
     }
 }
 
 void SauceEditor::selectTab (int index)
 {
-    current = index;
     for (int i = 0; i < tabs.size(); ++i) tabs[i]->setToggleState (i == index, dontSendNotification);
-    for (int i = 0; i < 7; ++i) pageFor (i)->setVisible (i == index);
+    if (pageFor (index) == nullptr)             // Delay / Reverb: their controls live in the panels below, so point at them
+    {
+        flashPanel = index; flashStart = Time::getMillisecondCounterHiRes();
+        content.repaint();
+        return;
+    }
+    current = index;
+    for (int i = 0; i < kNumTabs; ++i) if (auto* pg = pageFor (i)) pg->setVisible (i == index);
     if (index != 2 && eqFull) setFullscreenEq (false);
     content.repaint();
 }
@@ -247,19 +251,31 @@ void SauceEditor::setFullscreenEq (bool f)
 
 void SauceEditor::paint (Graphics& g)
 {
-    g.fillAll (SauceColours::bg);
     g.addTransform (content.getTransform());
+    if (! wall.isValid()) wall = SauceDraw::sprayWall (kBaseW, kBaseH);
+    g.drawImageAt (wall, 0, 0);
     // main panel frame behind the current page
     const auto mp = (eqFull ? kMainPanelFull : kMainPanel).toFloat();
     SauceDraw::panel (g, mp, 12);
     // signal-flow chevrons between the chain tabs
-    g.setColour (SauceColours::neon.withAlpha (0.85f));
-    for (int slot = 0; slot < 6; ++slot)
+    g.setColour (SauceColours::spray);
+    for (int slot = 0; slot < kNumTabs - 1; ++slot)
     {
-        const float x = 20.0f + (float) (slot + 1) * 194.0f - 8.0f, y = 120.0f;
+        const float x = (float) (kTabX0 + (slot + 1) * kTabSlot) - 4.0f, y = 121.0f;
         Path c; c.startNewSubPath (x - 2.5f, y - 5); c.lineTo (x + 2.5f, y); c.lineTo (x - 2.5f, y + 5);
         g.strokePath (c, PathStrokeType (2.0f, PathStrokeType::curved, PathStrokeType::rounded));
     }
+}
+
+void SauceEditor::paintOverChildren (Graphics& g)
+{
+    if (flashPanel < 0) return;
+    const double age = Time::getMillisecondCounterHiRes() - flashStart;
+    if (age > 1400) { flashPanel = -1; return; }
+    g.addTransform (content.getTransform());
+    const auto r = (flashPanel == 8 ? delay.getBounds() : reverb.getBounds()).toFloat().reduced (2);
+    const float a = (float) (1.0 - age / 1400.0);
+    SauceDraw::neonRoundedRect (g, r, 12, SauceColours::neonHi.withAlpha (a), 3.0f, 18);
 }
 
 void SauceEditor::resized()
@@ -274,6 +290,7 @@ void SauceEditor::timerCallback()
     if (auto* pg = dynamic_cast<ModulePage*> (pageFor (current)); pg != nullptr && pg->isVisible()) pg->tick();
     delay.tick(); reverb.tick(); routing.tick(); coach.tick(); metersPanel.tick(); bottom.tick();
     toast.tick();
+    if (flashPanel >= 0) repaint();
     if (draggingTab < 0 && proc.getChainOrder() != shownOrder) { shownOrder = proc.getChainOrder(); layoutTabs(); content.repaint(); }
     if (! proc.presetDirty && (proc.presetName != lastToastName || lastToastDirty)) { showPresetToast(); toast.toFront (false); }
     lastToastName = proc.presetName; lastToastDirty = proc.presetDirty;
@@ -337,7 +354,8 @@ void SauceEditor::showInfo()
 {
     AlertWindow::showMessageBoxAsync (MessageBoxIconType::InfoIcon, "The Sauce Suite " + String (kSauceVersion),
         "Vocal production suite by Drellmadeit.\n\n"
-        "Chain: Input > Gate > Auto Tune > EQ > Match EQ > Compressor > Vocal FX > (Delay + Reverb in parallel, ducked by your dry vocal) > Dry/Wet > Output > Limiter.\n\n"
+        "Chain: Input > your modules in tab order, left to right (drag the tabs to rearrange) > Dry/Wet > Output. "
+        "The limiter sits last by default so nothing goes over the ceiling.\n\n"
         "Artist-inspired presets are unofficial starting points. They aren't affiliated with or endorsed by any artist, and they shape your vocal's processing, not your voice.\n\n"
         "Latency: " + String (proc.getLatencySamples()) + " samples (reported to your DAW for compensation).\n\n"
         "Built with JUCE. Fonts: Poppins (SIL Open Font License 1.1).");

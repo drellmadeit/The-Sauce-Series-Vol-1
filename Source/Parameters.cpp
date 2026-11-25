@@ -50,19 +50,43 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     v.push_back (f (tuneSpeed,    "Retune Speed", skewed (0.0f, 400.0f, 50.0f), 25.0f, unit ("ms", 0)));
     v.push_back (f (tuneAmount,   "Correction Amount", { 0.0f, 100.0f, 0.1f }, 100.0f, unit ("%", 0)));
     v.push_back (f (tuneHumanize, "Humanize", { 0.0f, 100.0f, 0.1f }, 0.0f, unit ("%", 0)));
+    v.push_back (f (tuneSmooth,   "Smoothness", { 0.0f, 100.0f, 0.1f }, 35.0f, unit ("%", 0)));
+
+    v.push_back (b (popOn, "Plosive Filter On", true));
+    v.push_back (f (popSens,  "Plosive Sensitivity", { 0.0f, 100.0f, 0.1f }, 50.0f, unit ("%", 0)));
+    v.push_back (f (popFreq,  "Plosive Frequency", skewed (60.0f, 400.0f, 150.0f), 150.0f, hzUnit()));
+    v.push_back (f (popDepth, "Plosive Max Reduction", { 0.0f, 30.0f, 0.1f }, 14.0f, unit ("dB")));
+
+    v.push_back (b (deessOn, "De-Esser On", true));
+    v.push_back (f (deessFreq,   "De-Ess Frequency", skewed (2000.0f, 14000.0f, 6500.0f), 6500.0f, hzUnit()));
+    v.push_back (f (deessThresh, "De-Ess Threshold", { -60.0f, 0.0f, 0.1f }, -30.0f, unit ("dB")));
+    v.push_back (f (deessRange,  "De-Ess Max Reduction", { 0.0f, 24.0f, 0.1f }, 8.0f, unit ("dB")));
+    v.push_back (b (deessListen, "De-Ess Listen", false));
 
     v.push_back (b (eqOn, "EQ On", true));
-    const int   defType[6] = { 3, 1, 0, 0, 0, 2 };
-    const float defFreq[6] = { 90, 200, 320, 2500, 7000, 12000 }, defQ[6] = { 0.71f, 0.71f, 1.4f, 1.0f, 2.0f, 0.71f };
-    for (int i = 0; i < 6; ++i)
+    // bands 1-6 are the classic layout every preset uses; 7-12 start switched off (double-click the graph to add one)
+    const int   defType[12] = { 3, 1, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0 };
+    const float defFreq[12] = { 90, 200, 320, 2500, 7000, 12000, 150, 500, 1000, 2000, 4000, 9000 };
+    const float defQ[12] = { 0.71f, 0.71f, 1.4f, 1.0f, 2.0f, 0.71f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f };
+    for (int i = 0; i < 12; ++i)
     {
         const String n = "Band " + String (i + 1) + " ";
-        v.push_back (b (band (i, "on"), n + "On", true));
+        v.push_back (b (band (i, "on"), n + "On", i < 6));
         v.push_back (c (band (i, "type"), n + "Type", bandTypes, defType[i]));
         v.push_back (f (band (i, "freq"), n + "Freq", skewed (20.0f, 20000.0f, 1000.0f), defFreq[i], hzUnit()));
         v.push_back (f (band (i, "gain"), n + "Gain", { -18.0f, 18.0f, 0.1f }, 0.0f, unit ("dB")));
         v.push_back (f (band (i, "q"),    n + "Q",    skewed (0.1f, 18.0f, 1.5f), defQ[i], unit ("", 2)));
+        v.push_back (f (band (i, "dyn"),  n + "Dynamic Range", { -18.0f, 18.0f, 0.1f }, 0.0f, unit ("dB")));
+        v.push_back (f (band (i, "thr"),  n + "Dynamic Threshold", { -60.0f, 0.0f, 0.1f }, -30.0f, unit ("dB")));
     }
+    v.push_back (b (resOn, "Resonance Suppressor On", false));
+    v.push_back (f (resDepth,  "Resonance Depth", { 0.0f, 12.0f, 0.1f }, 5.0f, unit ("dB")));
+    v.push_back (f (resSharp,  "Resonance Sharpness", { 0.0f, 100.0f, 0.1f }, 50.0f, unit ("%", 0)));
+    v.push_back (f (resSelect, "Resonance Selectivity", { 0.0f, 100.0f, 0.1f }, 50.0f, unit ("%", 0)));
+    v.push_back (f (resSpeed,  "Resonance Speed", { 0.0f, 100.0f, 0.1f }, 50.0f, unit ("%", 0)));
+    v.push_back (f (resLo,     "Resonance Low", skewed (125.0f, 16000.0f, 1500.0f), 400.0f, hzUnit()));
+    v.push_back (f (resHi,     "Resonance High", skewed (125.0f, 16000.0f, 1500.0f), 12000.0f, hzUnit()));
+    v.push_back (b (resDelta,  "Resonance Delta (listen)", false));
 
     v.push_back (b (matchOn, "Match EQ On", true));
     v.push_back (f (matchStrength, "Match Strength", { 0.0f, 100.0f, 0.1f }, 70.0f, unit ("%", 0)));
@@ -105,7 +129,9 @@ AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     v.push_back (f (revDuck,     "Reverb Ducking", { 0.0f, 100.0f, 0.1f }, 60.0f, unit ("%", 0)));
 
     v.push_back (b (limOn, "Limiter On", true));
-    v.push_back (f (limCeiling, "Limiter Ceiling", { -12.0f, 0.0f, 0.1f }, -1.0f, unit ("dB")));
+    v.push_back (f (limCeiling, "Limiter Ceiling", { -30.0f, 0.0f, 0.1f }, -1.0f, unit ("dB")));
+    v.push_back (f (limDrive,   "Limiter Drive", { 0.0f, 24.0f, 0.1f }, 0.0f, unit ("dB")));
+    v.push_back (c (limCharacter, "Limiter Character", limCharacters, 0));
     v.push_back (f (limRelease, "Limiter Release", skewed (1.0f, 1000.0f, 80.0f), 80.0f, unit ("ms", 0)));
 
     v.push_back (c (scRole, "Sidechain Input", scRoles, 0));
@@ -120,8 +146,8 @@ ParamReader::ParamReader (AudioProcessorValueTreeState& s) : state (s)
     for (auto* param : s.processor.getParameters())
         if (auto* r = dynamic_cast<RangedAudioParameter*> (param))
             p[r->getParameterID()] = s.getRawParameterValue (r->getParameterID());
-    const char* what[5] = { "on", "type", "freq", "gain", "q" };
-    for (int b = 0; b < 6; ++b) for (int k = 0; k < 5; ++k) bandPtr[(size_t) b][(size_t) k] = p.at (ParamIDs::band (b, what[k]));
+    const char* what[7] = { "on", "type", "freq", "gain", "q", "dyn", "thr" };
+    for (int b = 0; b < sauce::ParametricEQ::kBands; ++b) for (int k = 0; k < 7; ++k) bandPtr[(size_t) b][(size_t) k] = p.at (ParamIDs::band (b, what[k]));
 }
 
 float ParamReader::get (const String& id) const { return raw (id)->load (std::memory_order_relaxed); }
@@ -145,15 +171,20 @@ sauce::ChainParams ParamReader::read (double bpm) const
     c.gateOn = on (gateOn); c.gateThresh = get (gateThresh); c.gateAttack = get (gateAttack); c.gateHold = get (gateHold);
     c.gateRelease = get (gateRelease); c.gateRange = get (gateRange);
     c.tuneOn = on (tuneOn); c.tuneKey = (int) get (tuneKey); c.tuneScale = (int) get (tuneScale); c.tuneSpeed = get (tuneSpeed);
-    c.tuneAmount = pc (tuneAmount); c.tuneHumanize = pc (tuneHumanize);
+    c.tuneAmount = pc (tuneAmount); c.tuneHumanize = pc (tuneHumanize); c.tuneSmooth = pc (tuneSmooth);
+    c.deessOn = on (deessOn); c.deessFreq = get (deessFreq); c.deessThresh = get (deessThresh); c.deessRange = get (deessRange);
+    c.deessListen = on (deessListen);
     c.eqOn = on (eqOn);
-    for (int i = 0; i < 6; ++i)
+    for (int i = 0; i < sauce::ParametricEQ::kBands; ++i)
     {
         auto& bp = c.bands[(size_t) i];
         const auto& bpp = bandPtr[(size_t) i];
         bp.on = bpp[0]->load() > 0.5f; bp.type = (int) bpp[1]->load(); bp.freq = bpp[2]->load();
-        bp.gainDb = bpp[3]->load(); bp.q = bpp[4]->load();
+        bp.gainDb = bpp[3]->load(); bp.q = bpp[4]->load(); bp.dynDb = bpp[5]->load(); bp.dynThreshDb = bpp[6]->load();
     }
+    c.resOn = on (resOn); c.resDelta = on (resDelta); c.resDepth = get (resDepth); c.resSharp = pc (resSharp); c.resSelect = pc (resSelect);
+    c.resSpeed = pc (resSpeed); c.resLo = get (resLo); c.resHi = get (resHi);
+    c.popOn = on (popOn); c.popSens = pc (popSens); c.popFreq = get (popFreq); c.popDepth = get (popDepth);
     c.matchOn = on (matchOn);
     c.compOn = on (compOn); c.compThresh = get (compThresh); c.compRatio = get (compRatio); c.compAttack = get (compAttack);
     c.compRelease = get (compRelease); c.compMakeup = get (compMakeup);
@@ -166,6 +197,7 @@ sauce::ChainParams ParamReader::read (double bpm) const
     c.revOn = on (revOn); c.revType = (int) get (revType); c.revPreDelay = get (revPreDelay); c.revDecay = get (revDecay);
     c.revDamp = pc (revDamp); c.revMix = pc (revMix); c.revDuck = pc (revDuck);
     c.limOn = on (limOn); c.limCeiling = get (limCeiling); c.limRelease = get (limRelease);
+    c.limDrive = get (limDrive); c.limCharacter = (int) get (limCharacter);
     c.lowLatency = (int) get (latencyMode) == 1;
     return c;
 }

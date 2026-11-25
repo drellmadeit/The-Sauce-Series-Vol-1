@@ -25,6 +25,7 @@ public:
     float retuneMs  = 20.0f;    // 0 = instant (hard tune)
     float amount    = 1.0f;     // 0..1 correction depth
     float humanize  = 0.0f;     // 0..1 keeps small natural deviations (vibrato / scoops)
+    float smooth    = 0.35f;    // 0..1 tunes the note's centre and lets vibrato/slides ride on top (scaled down at hard-tune speeds)
 
     /** Tracking (low-latency) mode: the dry/unvoiced path runs at kTrackDelay samples and tuned notes use the
         smallest possible grain (two periods), so a tuned note arrives about one cycle of the voice later.
@@ -48,7 +49,7 @@ public:
         dbuf.assign ((size_t) (W + tauMax + 2), 0.0f);
         diff.assign ((size_t) (tauMax + 2), 0.0f);
 
-        maxPeriod = (float) (sr / 70.0);
+        maxPeriod = (float) (sr / 80.0);         // shifter grain sized for voices down to ~80 Hz (detection still goes to 70 Hz)
         grainMax  = 2.0f * maxPeriod;
         Dlat      = (int) std::ceil (grainMax * 0.5f) + 4;
         line.prepare ((int) (Dlat + grainMax) + 16);
@@ -60,7 +61,7 @@ public:
         line.clear(); for (auto& f : aa) f.reset(); hp.reset();
         std::fill (dbuf.begin(), dbuf.end(), 0.0f);
         decCount = 0; hopCount = 0; dbFill = 0;
-        phase = 0; grain = (float) (0.020 * sr); ratioCents = 0; targetCents = 0;
+        phase = 0; grain = (float) (0.020 * sr); ratioCents = 0; targetCents = 0; stage1 = 0; rampCents = 0; rampStep = 0; centreMidi = -1;
         voiced = false; voicedMix = 0; curNote = -1; hist[0] = hist[1] = hist[2] = 0;
         lastHz = 0; lastTargetMidi = -1; lastCorrection = 0;
     }
@@ -70,7 +71,10 @@ public:
 
     void update()
     {
-        retuneCoef = retuneMs <= 0.5f ? 0.0f : tcCoef (retuneMs, sr);
+        // two cascaded stages at half the time each: same overall speed, but the glide starts and lands softly (S-curve)
+        retuneCoef = retuneMs <= 0.5f ? 0.0f : tcCoef (retuneMs * 0.5f, sr);
+        smoothEff = clampv (smooth, 0.0f, 1.0f) * clampv (retuneMs / 15.0f, 0.0f, 1.0f);
+        frameLen = (float) (hop * dec);
     }
 
     inline float process (float x)
@@ -199,7 +203,7 @@ private:
         float hz = rmsDb > -52.0f ? yin (dbuf.data(), W, tauMin, tauMax, ds, diff.data(), &ap) : 0.0f;
         if (hz < 70.0f || hz > 1000.0f) hz = 0.0f;
 
-        if (hz <= 0.0f) { voiced = false; lastHz = 0; targetCents = 0; lastCorrection = 0; return; }
+        if (hz <= 0.0f) { voiced = false; lastHz = 0; targetCents = 0; lastCorrection = 0; centreMidi = -1; return; }
 
         // median of last three estimates rejects single-frame octave slips
         hist[0] = hist[1]; hist[1] = hist[2]; hist[2] = hz;
@@ -209,31 +213,46 @@ private:
         voiced = true; lastHz = med;
 
         const float midi = 69.0f + 12.0f * std::log2 (med / 440.0f);
-        int note = nearestScaleNote (midi, key, scale);
+        // slow-moving centre of the sung note (~120 ms); vibrato and small slides are measured against it
+        if (centreMidi < 0.0f || std::abs (midi - centreMidi) > 0.8f) centreMidi = midi;
+        else centreMidi += 0.09f * (midi - centreMidi);
+        const float sung = midi + smoothEff * (centreMidi - midi);  // Smoothness: correct the centre, keep the wobble
+        // the target note follows the (smoothed) sung pitch, so a wide vibrato can't flip between two notes
+        int note = nearestScaleNote (sung, key, scale);
         // hysteresis: hold the current note until we are clearly closer to another
-        if (curNote >= 0 && note != curNote && std::abs (midi - (float) curNote) < 0.62f
+        if (curNote >= 0 && note != curNote && std::abs (sung - (float) curNote) < 0.62f
             && noteInScale (((curNote % 12) + 12) % 12, key, scale))
             note = curNote;
         curNote = note;
 
-        const float dev = ((float) note - midi) * 100.0f;          // cents to move
+        const float dev = ((float) note - sung) * 100.0f;          // cents to move
         float shift = dev * amount;
         const float window = humanize * 35.0f;                     // humanize keeps small deviations
         if (window > 0.0f && std::abs (dev) < window) shift *= std::abs (dev) / window;
         targetCents = clampv (shift, -600.0f, 600.0f);
+        rampStep = retuneCoef > 0.0f ? (targetCents - rampCents) / std::max (1.0f, frameLen) : 0.0f;   // ramp to the new target over one frame (no zipper steps)
+        if (retuneCoef <= 0.0f) rampCents = targetCents;
         lastTargetMidi = (float) note; lastCorrection = targetCents;
     }
 
     inline void targetSmoothed()
     {
-        const float tgt = (enabled && voiced) ? targetCents : 0.0f;
-        ratioCents = tgt + retuneCoef * (ratioCents - tgt);
+        if (rampStep != 0.0f)
+        {
+            rampCents += rampStep;
+            if ((rampStep > 0.0f && rampCents >= targetCents) || (rampStep < 0.0f && rampCents <= targetCents)) { rampCents = targetCents; rampStep = 0.0f; }
+        }
+        else rampCents = targetCents;
+        const float tgt = (enabled && voiced) ? rampCents : 0.0f;
+        stage1 = tgt + retuneCoef * (stage1 - tgt);
+        ratioCents = stage1 + retuneCoef * (ratioCents - stage1);
     }
 
     double sr = 44100, ds = 11025; int dec = 4, tauMin = 10, tauMax = 160, W = 441, hop = 116;
     Biquad aa[2], hp; std::vector<float> dbuf, diff; int decCount = 0, hopCount = 0, dbFill = 0;
     DelayLine line; int Dlat = 512; float maxPeriod = 600, grainMax = 1200, grain = 800, phase = 0;
     float ratioCents = 0, targetCents = 0, retuneCoef = 0, voicedMix = 0; bool voiced = false;
+    float stage1 = 0, rampCents = 0, rampStep = 0, frameLen = 512, centreMidi = -1, smoothEff = 0;
     int curNote = -1; float hist[3] {}; bool lowLatency = false;
 };
 } // namespace sauce

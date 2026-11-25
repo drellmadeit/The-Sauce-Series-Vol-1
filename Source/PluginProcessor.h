@@ -5,9 +5,10 @@
 #include "AnalysisEngine.h"
 #include "SauceAssistant.h"
 #include "dsp/VocalChain.h"
+#include "SauceLink.h"
 
 /** Product version: bump for every release (also CMakeLists.txt project VERSION, installer/Installer.rc, CHANGELOG.md). */
-constexpr const char* kSauceVersion = "1.4.0";
+constexpr const char* kSauceVersion = "1.5.0";
 
 #ifndef SAUCE_TEST_BUILD
  #define SAUCE_TEST_BUILD 0
@@ -17,7 +18,7 @@ constexpr const char* kSauceVersion = "1.4.0";
 struct SauceMeters
 {
     std::atomic<float> inL { 0 }, inR { 0 }, outL { 0 }, outR { 0 };
-    std::atomic<float> gateGainDb { 0 }, compGrDb { 0 }, limGrDb { 0 };
+    std::atomic<float> gateGainDb { 0 }, compGrDb { 0 }, limGrDb { 0 }, deessGrDb { 0 }, popGrDb { 0 };
     std::atomic<float> delayReturn { 0 }, reverbReturn { 0 }, delayDuckDb { 0 }, reverbDuckDb { 0 };
     std::atomic<float> tuneHz { 0 }, tuneTarget { -1 }, tuneCorrection { 0 }; std::atomic<bool> tuneVoiced { false };
     std::atomic<float> leadLevelDb { -100 };
@@ -69,8 +70,11 @@ public:
 
     void setMatchGains (const std::array<float, sauce::MatchFilterbank::kBands>& g);
     std::array<float, sauce::MatchFilterbank::kBands> getMatchGains() const;
-    void setBandSolo (int band) { chain.eq.soloBand.store (band); }
-    int  getBandSolo() const    { return chain.eq.soloBand.load(); }
+    void setBandSolo (int band) { chain.setBandSolo (band); }
+    int  getBandSolo()          { return chain.eq().soloBand.load(); }
+    /** Live resonance cuts and dynamic-band offsets for the EQ display (read-only floats written by the audio thread). */
+    const std::array<float, sauce::ResonanceSuppressor::kBands>& resonanceCuts() { return chain.eq().res.cutDb; }
+    const std::array<float, sauce::ParametricEQ::kBands>& dynamicOffsets() { return chain.eq().dynNow; }
 
     // preset / browsing state (message thread)
     juce::String presetName { "R&B Vocal - Polished" };
@@ -85,7 +89,8 @@ public:
     void setParam (const juce::String& id, float realValue);
 
     /** Vocal chain order as letters: G gate, T tune, E eq, M match eq, C compressor, S saturation. */
-    static juce::String defaultChainOrder() { return "GTEMCS"; }
+    static juce::String defaultChainOrder() { return "GPTEMCDSYRL"; }  // Gate, Plosive, Tune, EQ, Match, Comp, De-Ess, Vocal FX, Delay, Reverb, Limiter
+    static juce::String upgradeChainOrder (const juce::String& o);
     static bool isValidChainOrder (const juce::String& o);
     juce::String getChainOrder() const { return chainOrder; }
     bool setChainOrder (const juce::String& order, bool markEdited = true);   // message thread
@@ -97,6 +102,26 @@ public:
     juce::ValueTree captureFullState() const;
     void restoreFullState (const juce::ValueTree&);
 
+    // ---- What part this track is (drives the role-aware Vocal Coach) ----
+    static const juce::StringArray& roleNames() { static const juce::StringArray n { "Lead", "Hook", "Ad-libs", "Backgrounds", "Harmonies", "Doubles" }; return n; }
+    void setRoleOverride (int role) { roleOverride = juce::jlimit (-1, 5, role); updateRole(); }   // -1 = Auto
+    int  getRoleOverride() const { return roleOverride; }
+    int  getRole() const { return currentRole.load(); }
+    juce::String getRoleReason() const { return roleReason; }
+    void updateRole();                                 // message thread: detect from override, track name, preset, settings
+
+    // ---- Track Link (no-sidechain routing between Sauce Suite instances in the same DAW) ----
+    enum LinkMode { LinkOff = 0, LinkSendBeat = SauceLink::Beat, LinkSendReference = SauceLink::Reference };
+    void setLinkSend (int mode);                       // message thread. Sending = this track passes through untouched (0 latency)
+    int  getLinkSend() const { return linkSendMode; }
+    void setLinkSource (const juce::String& senderName);   // "" = none
+    juce::String getLinkSource() const { return linkSourceName; }
+    bool isLinkReceiving() const { return linkReceiving.load(); }
+    juce::String getTrackName() const { const juce::SpinLock::ScopedLockType l (trackNameLock); return trackName; }
+    juce::String linkDisplayName() const;
+    void refreshLink();                                // message thread: re-finds the chosen sender by name, renames our slot
+    void updateTrackProperties (const TrackProperties& props) override;
+
 private:
     void parameterChanged (const juce::String&, float) override;
 
@@ -106,10 +131,15 @@ private:
 
     std::array<float, sauce::MatchFilterbank::kBands> matchBuf[2] {};
     std::atomic<int> matchIdx { 0 };
-    juce::String chainOrder { "GTEMCS" };
-    std::atomic<uint32_t> chainOrderPacked { 0x543210 };
+    juce::String chainOrder { defaultChainOrder() };
+    int roleOverride = -1; std::atomic<int> currentRole { 0 }; juce::String roleReason { "lead vocal (default)" };
+    int linkSendMode = LinkOff, linkSendSlot = -1; juce::String linkSourceName;
+    std::atomic<int> sendSlot { -1 }, receiveSlot { -1 }; std::atomic<bool> linkReceiving { false };
+    SauceLink::Reader linkReader;
+    juce::String trackName; mutable juce::SpinLock trackNameLock;
+    std::atomic<uint64_t> chainOrderPacked { 0x987615432A0ull };   // nibble i = module at slot i (default order)
     std::atomic<bool> loadingPreset { false }, autoKeyApplying { false };
-    void timerCallback() override { applyAutoKey(); assistant.updateLevel(); }
+    void timerCallback() override { applyAutoKey(); assistant.updateLevel(); refreshLink(); updateRole(); }
     float scEnv = 0;
     void processChunk (juce::AudioBuffer<float>& buffer, int start, int n);
 

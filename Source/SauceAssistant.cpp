@@ -70,13 +70,15 @@ bool SauceAssistant::apply (const Target& target)
     // level is measured on the NEW sound, so listen a little longer before setting it
     levelTargetDb = sauce::Assistant::levelTarget (genre.toStdString(), target.role);
     levelLabel = genre + " " + sauce::roleName (target.role);
-    pendingLevel = proc.analysis.isReceivingSidechain() || in.hasBeat;
+    pendingLevel = proc.analysis.isReceivingSidechain() || (in.hasBeat && ! in.beatFromFile);
     levelPasses = 0; levelTotal = 0;
     if (pendingLevel)
     {
         proc.analysis.assistantStart();
         notes.add ("Keep the beat playing and sing a few lines: the vocal level against the beat gets set in a few seconds.");
     }
+    else if (in.beatFromFile)
+        notes.add ("Used your beat file (" + proc.analysis.beatFileName() + "). For automatic level matching, link the beat track or route it to the sidechain and play it.");
     after = proc.captureFullState();
     showingBefore = false;
     return true;

@@ -12,8 +12,8 @@ IDR_PRESETS      RCDATA "payload/presets.txt"
 IDR_WHATSNEW     RCDATA "payload/whatsnew.txt"
 IDR_README       RCDATA "text/readme.txt"
 1 VERSIONINFO
-FILEVERSION 1,4,0,0
-PRODUCTVERSION 1,4,0,0
+FILEVERSION 1,5,0,0
+PRODUCTVERSION 1,5,0,0
 BEGIN
   BLOCK "StringFileInfo"
   BEGIN
@@ -21,9 +21,9 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Drellmadeit"
       VALUE "FileDescription", "The Sauce Suite Setup"
-      VALUE "FileVersion", "1.4.0"
+      VALUE "FileVersion", "1.5.0"
       VALUE "ProductName", "The Sauce Suite"
-      VALUE "ProductVersion", "1.4.0"
+      VALUE "ProductVersion", "1.5.0"
       VALUE "LegalCopyright", "Copyright (c) 2026 Drellmadeit"
     END
   END

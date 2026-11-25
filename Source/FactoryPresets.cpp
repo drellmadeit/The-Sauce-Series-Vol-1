@@ -252,6 +252,13 @@ namespace
         r.dbl = 100; r.wide = 100; r.tuneOn = true; r.tSpeed = 5; r.rType = Hall; r.rDecay = 3.5f; r.rMix = 35; r.hpf = 250; add ("Choir Stack");
         r.rType = Hall; r.rDecay = 10.0f; r.rMix = 70; r.rDuck = 0; r.rPre = 0; r.rDamp = 20; r.dMix = 0; r.hpf = 300; add ("Infinite Wash");
         r.hpf = 180; r.hiCutTop = true; r.airF = 7000; r.satDrive = 12; r.satMix = 50; r.dDiv = d4; r.dFb = 50; r.dMix = 30; r.dHc = 2200; r.rType = Room; r.rDamp = 80; add ("Vinyl Tape Echo");
+        // presets that only exist because the chain order is up to you
+        r.rType = Hall; r.rDecay = 3.5f; r.rMix = 35; r.rDuck = 30; r.dDiv = d4; r.dFeel = Dotted; r.dFb = 45; r.dMix = 30; r.dDuck = 20; r.ping = true;
+        r.order = "GPTEMCDSRYL"; add ("Reverb Into Delay (Echoing Wash)");
+        r.rType = Plate; r.rDecay = 2.5f; r.rMix = 35; r.rDuck = 0; r.dDiv = d8; r.dFb = 35; r.dMix = 25; r.dDuck = 0; r.cRatio = 8; r.cThr = -34; r.cAtk = 2; r.cRel = 180; r.cMk = 8;
+        r.order = "GPTEMDSYRCL"; add ("Pumping Tails (Comp After FX)");
+        r.rType = Hall; r.rDecay = 4.0f; r.rMix = 45; r.rDuck = 0; r.dMix = 8; r.gate = -30;
+        r.order = "PTEMCDSYRGL"; add ("Gated Verb (Gate After Reverb)");
         return v;
     }
 }
@@ -401,6 +408,70 @@ namespace
             { "Nas",              { "Boom Bap", "Rap" },            { 0,  0,  1, 2, 2, 0, 0, 0, d8,  Straight, PUNCH } },
             { "Joey Bada$$",      { "Boom Bap", "Rap" },            { 0, -1,  1, 2, 2, 1, 0, 0, d8,  Straight, VINT } },
             { "MF DOOM",          { "Boom Bap", "Lo-Fi" },          { 0, -2,  2, 3, 3, 0, 0, 0, d8,  Straight, VINT } },
+            // ---- 1.5 roster: more artists so every genre has at least ten (all unofficial, style only)
+            { "Westside Gunn",    { "Boom Bap", "Rap" },            { 0, -1,  1, 2, 3, 1, 1, 0, d8,  Straight, VINT } },
+            { "Benny the Butcher",{ "Boom Bap", "Rap" },            { 0,  0,  1, 1, 3, 0, 0, 0, d8,  Straight, PUNCH } },
+            { "Conway the Machine",{ "Boom Bap", "Rap" },           { 0, -1,  1, 2, 3, 0, 1, 0, d8,  Straight, PUNCH } },
+            { "Freddie Gibbs",    { "Boom Bap", "Rap" },            { 0,  0,  1, 1, 2, 1, 0, 0, d8,  Straight, PUNCH } },
+            { "Black Thought",    { "Boom Bap", "Rap" },            { 0,  0,  1, 1, 2, 0, 0, 0, d8,  Straight, DEF } },
+            { "Logic",            { "Rap", "Boom Bap" },            { 0,  1,  0, 0, 2, 1, 1, 0, d8,  Straight, DEF } },
+            { "Sheff G",          { "Drill" },                      { 1, -1,  1, 2, 3, 1, 1, 0, d16, Straight, PUNCH } },
+            { "Sleepy Hallow",    { "Drill", "Melodic Rap" },       { 2,  0,  0, 1, 2, 2, 2, 1, d8,  Dotted,   SMOOTH } },
+            { "Digga D",          { "Drill" },                      { 1,  0,  0, 2, 3, 1, 1, 0, d16, Straight, PUNCH } },
+            { "Headie One",       { "Drill", "Rap" },               { 1,  0,  0, 1, 3, 1, 1, 0, d8,  Straight, PUNCH } },
+            { "Lil Tjay",         { "Melodic Rap", "Drill" },       { 3,  1,  0, 1, 2, 2, 2, 1, d8,  Dotted,   DEF } },
+            { "Juice WRLD",       { "Melodic Rap", "Trap" },        { 3,  1,  0, 1, 2, 2, 2, 1, d4,  Straight, DEF } },
+            { "Lil Tecca",        { "Melodic Rap", "Trap" },        { 3,  2, -1, 0, 2, 1, 2, 1, d8,  Straight, DEF } },
+            { "A Boogie wit da Hoodie", { "Melodic Rap", "R&B" },   { 2,  0,  1, 0, 2, 2, 1, 1, d8,  Straight, SMOOTH } },
+            { "Key Glock",        { "Trap" },                       { 1, -1,  1, 1, 3, 1, 1, 0, d8,  Straight, PUNCH } },
+            { "Ty Dolla $ign",    { "R&B", "Trap-Soul" },           { 2,  0,  1, 0, 2, 2, 1, 2, d8,  Straight, SMOOTH } },
+            { "Roy Woods",        { "Trap-Soul", "R&B" },           { 2, -1,  1, 0, 2, 3, 2, 1, d4,  Dotted,   SMOOTH } },
+            { "dvsn",             { "R&B", "Trap-Soul" },           { 1,  0,  2, 0, 2, 3, 1, 1, d4,  Straight, SMOOTH } },
+            { "Kiana Lede",       { "R&B", "Trap-Soul" },           { 2,  1,  0, 0, 2, 2, 1, 2, d4,  Straight, SMOOTH } },
+            { "Arctic Monkeys",   { "Indie / Alt", "Rock" },        { 0,  0,  1, 2, 2, 1, 1, 0, d8,  Straight, VINT } },
+            { "Clairo",           { "Indie / Alt", "Lo-Fi" },       { 0, -1,  1, 1, 1, 2, 1, 1, d4,  Straight, VINT } },
+            { "Phoebe Bridgers",  { "Indie / Alt" },                { 0,  0,  1, 0, 1, 3, 1, 1, d4,  Straight, DEF } },
+            { "The 1975",         { "Indie / Alt", "Pop" },         { 1,  1,  0, 1, 2, 2, 1, 2, d8,  Dotted,   DEF } },
+            { "Ayra Starr",       { "Afrobeats", "Pop" },           { 2,  1,  0, 0, 2, 2, 1, 2, d8,  Straight, DEF } },
+            { "Fireboy DML",      { "Afrobeats", "R&B" },           { 2,  1,  1, 0, 2, 2, 1, 1, d8,  Straight, SMOOTH } },
+            { "Omah Lay",         { "Afrobeats", "R&B" },           { 2,  0,  1, 0, 2, 2, 2, 1, d8,  Triplet,  SMOOTH } },
+            { "Tiwa Savage",      { "Afrobeats", "Pop" },           { 2,  1,  0, 0, 2, 2, 1, 1, d8,  Straight, DEF } },
+            { "Sean Paul",        { "Dancehall", "Pop" },           { 1,  1,  0, 1, 3, 1, 1, 1, d8,  Straight, PUNCH } },
+            { "Spice",            { "Dancehall" },                  { 1,  1,  0, 1, 3, 1, 2, 1, d8,  Straight, PUNCH } },
+            { "Masicka",          { "Dancehall" },                  { 2,  0,  0, 1, 3, 1, 1, 1, d8,  Straight, PUNCH } },
+            { "Valiant",          { "Dancehall" },                  { 2,  0,  0, 2, 3, 1, 2, 1, d8,  Straight, PUNCH } },
+            { "Chronic Law",      { "Dancehall" },                  { 2, -1,  1, 1, 2, 2, 2, 1, d8,  Dotted,   SMOOTH } },
+            { "Peso Pluma",       { "Latin / Reggaeton" },          { 1,  0,  1, 1, 2, 1, 1, 0, d8,  Straight, VINT } },
+            { "Ozuna",            { "Latin / Reggaeton", "Pop" },   { 3,  1,  0, 0, 2, 2, 1, 2, d8,  Straight, DEF } },
+            { "Daddy Yankee",     { "Latin / Reggaeton" },          { 1,  1,  0, 1, 3, 1, 1, 1, d8,  Straight, PUNCH } },
+            { "Anuel AA",         { "Latin / Reggaeton", "Trap" },  { 3,  0,  0, 1, 3, 2, 2, 1, d8,  Dotted,   DEF } },
+            { "Myke Towers",      { "Latin / Reggaeton" },          { 2,  0,  0, 1, 3, 1, 1, 1, d8,  Straight, PUNCH } },
+            { "Fred Hammond",     { "Gospel", "R&B" },              { 0,  0,  2, 0, 2, 3, 1, 2, d4,  Straight, SMOOTH } },
+            { "Tye Tribbett",     { "Gospel" },                     { 0,  1,  1, 1, 3, 2, 1, 2, d8,  Straight, PUNCH } },
+            { "Marvin Sapp",      { "Gospel" },                     { 0,  0,  2, 0, 2, 3, 1, 1, d4,  Straight, SMOOTH } },
+            { "Jonathan McReynolds", { "Gospel", "R&B" },           { 0,  1,  1, 0, 2, 2, 1, 1, d4,  Straight, DEF } },
+            { "Lecrae",           { "Gospel", "Rap" },              { 0,  0,  1, 1, 3, 1, 1, 0, d8,  Straight, PUNCH } },
+            { "Tauren Wells",     { "Gospel", "Pop" },              { 1,  1,  0, 0, 2, 3, 1, 2, d4,  Dotted,   DEF } },
+            { "Jelly Roll",       { "Country", "Rock" },            { 0, -1,  2, 2, 2, 2, 0, 1, d4,  Straight, VINT } },
+            { "Kane Brown",       { "Country", "Pop" },             { 1,  0,  2, 0, 2, 2, 1, 1, d4,  Straight, DEF } },
+            { "Thomas Rhett",     { "Country", "Pop" },             { 1,  1,  1, 0, 2, 2, 1, 1, d4,  Straight, DEF } },
+            { "Lainey Wilson",    { "Country" },                    { 0,  0,  1, 1, 2, 2, 1, 0, d4,  Straight, VINT } },
+            { "Shaboozey",        { "Country", "Pop" },             { 0,  0,  1, 1, 2, 2, 1, 1, d4,  Straight, VINT } },
+            { "Fall Out Boy",     { "Rock", "Pop" },                { 1,  1,  0, 2, 3, 2, 1, 2, d8,  Straight, PUNCH } },
+            { "Bring Me the Horizon", { "Rock" },                   { 1,  0,  0, 3, 3, 2, 1, 2, d8,  Straight, PUNCH } },
+            { "Twenty One Pilots",{ "Rock", "Indie / Alt" },        { 0,  1,  0, 1, 2, 2, 2, 1, d8,  Dotted,   DEF } },
+            { "Green Day",        { "Rock" },                       { 0,  0,  0, 2, 3, 1, 0, 1, d8,  Straight, PUNCH } },
+            { "Machine Gun Kelly",{ "Rock", "Pop", "Rap" },         { 1,  1,  0, 2, 3, 1, 1, 1, d8,  Straight, PUNCH } },
+            { "Powfu",            { "Lo-Fi", "Indie / Alt" },       { 1, -1,  1, 1, 1, 2, 1, 1, d4,  Straight, VINT } },
+            { "keshi",            { "Lo-Fi", "R&B" },               { 1, -1,  1, 1, 1, 2, 1, 1, d4,  Dotted,   VINT } },
+            { "Rex Orange County",{ "Indie / Alt", "Lo-Fi" },       { 0,  0,  1, 1, 1, 2, 1, 1, d4,  Straight, VINT } },
+            { "Still Woozy",      { "Indie / Alt", "Lo-Fi" },       { 1,  0,  1, 1, 2, 2, 1, 1, d8,  Straight, VINT } },
+            { "Omar Apollo",      { "R&B", "Indie / Alt", "Lo-Fi" },{ 1,  0,  1, 1, 1, 3, 1, 1, d4,  Straight, SMOOTH } },
+            { "David Guetta",     { "EDM", "Pop" },                 { 3,  2, -1, 0, 3, 3, 2, 2, d8,  Dotted,   DEF } },
+            { "Marshmello",       { "EDM", "Pop" },                 { 3,  2, -1, 0, 3, 3, 2, 2, d8,  Straight, DEF } },
+            { "Martin Garrix",    { "EDM" },                        { 3,  2, -1, 0, 3, 3, 2, 3, d8,  Dotted,   DEF } },
+            { "Skrillex",         { "EDM" },                        { 3,  1, -1, 3, 3, 2, 2, 2, d16, Straight, PUNCH } },
+            { "Zedd",             { "EDM", "Pop" },                 { 2,  2, -1, 0, 3, 3, 2, 2, d8,  Dotted,   DEF } },
         };
         return v;
     }
@@ -474,9 +545,18 @@ static std::vector<PresetInfo> makeArtistPresets()
     {
         Recipe base;
         for (auto& b : bases) if (b.genre == a.genres.front()) base = b;
-        PresetInfo p = fromRecipe (unofficial (a.name), applyStyle (base, a.s, a.name));
+        const Recipe styled = applyStyle (base, a.s, a.name);
+        PresetInfo p = fromRecipe (unofficial (a.name), styled);
         p.genre = a.genres.front(); p.artist = a.name;
         v.push_back (p);
+        // the same artist style for the other parts of the record
+        const std::pair<int, const char*> roles[] = { { Hook, "Hook" }, { Adlibs, "Ad-libs" }, { Backgrounds, "Backgrounds" } };
+        for (auto& [variant, label] : roles)
+        {
+            PresetInfo rp = fromRecipe (a.name + String ("-Inspired ") + label + " (Unofficial)", applyVariant (styled, variant));
+            rp.genre = a.genres.front(); rp.artist = a.name;
+            v.push_back (rp);
+        }
     }
     return v;
 }

@@ -1,4 +1,5 @@
 #include "SidePanels.h"
+#include "LinkMenu.h"
 
 using namespace juce;
 
@@ -14,14 +15,23 @@ PresetRoutingPanel::PresetRoutingPanel (SauceProcessor& p) : proc (p), selectors
     roleAtt = std::make_unique<ComboAtt> (p.apvts, ParamIDs::scRole, role);
     role.setTooltip ("What the sidechain carries: the Instrumental (beat) for the analyser and Vocal Coach, or a Reference Vocal for Match EQ. It is never heard in the output.");
     addAndMakeVisible (role);
-    help.getProperties().set ("fontScale", 0.48f);
+    help.getProperties().set ("fontScale", 0.55f);
+    help.setTooltip ("How to route your beat into the plugin");
     help.onClick = [this] { if (onRoutingHelp) onRoutingHelp(); };
     addAndMakeVisible (help);
+    linkBtn.getProperties().set ("fontScale", 0.5f);
+    linkBtn.getProperties().set ("primary", true);
+    linkBtn.setTooltip ("Track Link: hear your beat (or a reference vocal) from another track WITHOUT sidechain routing. "
+                        "Put The Sauce Suite on that track, choose Send there, then pick it here.");
+    linkBtn.onClick = [this] { LinkMenu::show (proc, &linkBtn, [this] { repaint(); }); };
+    addAndMakeVisible (linkBtn);
 }
 
 void PresetRoutingPanel::tick()
 {
     const bool r = proc.analysis.isReceivingSidechain(), c = proc.sidechainConnected.load();
+    const bool lk = proc.isLinkReceiving(); const int sm = proc.getLinkSend();
+    if (lk != linked || sm != sendMode) { linked = lk; sendMode = sm; repaint(); }
     const int ri = (int) proc.reader.get (ParamIDs::scRole);
     const float lv = proc.analysis.sidechainLevelDb();
     if (r != receiving || c != connected || ri != roleIdx || std::abs (lv - level) > 3.0f)
@@ -31,8 +41,8 @@ void PresetRoutingPanel::tick()
 void PresetRoutingPanel::paint (Graphics& g)
 {
     SauceDraw::panel (g, getLocalBounds().toFloat().reduced (1), 10);
-    g.setColour (SauceColours::text); g.setFont (SauceFonts::bold (21.0f));
-    g.drawText ("PRESET & ROUTING", 18, 8, 280, 32, Justification::centredLeft);
+    SauceDraw::tagText (g, "PRESET & ROUTING", 18, 32, 22.0f, false);
+    g.setColour (SauceColours::text);
     g.setFont (SauceFonts::medium (16.0f));
     g.drawText ("Preset", 18, 44, 80, 30, Justification::centredLeft);
     g.drawText ("Genre", 18, 78, 80, 22, Justification::centredLeft);
@@ -46,10 +56,13 @@ void PresetRoutingPanel::paint (Graphics& g)
     g.setColour (dotC); g.fillEllipse (20, 193, 10, 10);
     g.setColour (SauceColours::text); g.setFont (SauceFonts::regular (13.5f));
     String s;
-    if (receiving) s = (roleIdx == 0 ? "Receiving beat  " : "Receiving reference  ") + String (roundToInt (level)) + " dB";
+    if (sendMode != 0) s = sendMode == 1 ? "SENDING this track as the beat" : "SENDING as reference vocal";
+    else if (linked && receiving) s = "Linked: " + proc.getLinkSource();
+    else if (proc.getLinkSource().isNotEmpty()) s = "Linked: " + proc.getLinkSource() + " (silent)";
+    else if (receiving) s = (roleIdx == 0 ? "Receiving beat  " : "Receiving reference  ") + String (roundToInt (level)) + " dB";
     else if (connected) s = "Sidechain on, no signal";
-    else s = "No sidechain routed";
-    g.drawText (s, 36, 186, 170, 24, Justification::centredLeft);
+    else s = "No sidechain - try LINK";
+    g.drawFittedText (s, 36, 186, 160, 24, Justification::centredLeft, 1);
 }
 
 void PresetRoutingPanel::resized()
@@ -59,7 +72,8 @@ void PresetRoutingPanel::resized()
     selectors.genre.setBounds (16, 100, 144, 32);
     selectors.artist.setBounds (170, 100, 136, 32);
     role.setBounds (172, 148, 134, 32);
-    help.setBounds (206, 184, 100, 28);
+    linkBtn.setBounds (200, 184, 70, 28);
+    help.setBounds (276, 184, 30, 28);
 }
 
 //==============================================================================
@@ -67,6 +81,7 @@ void VocalCoachPanel::tick()
 {
     auto m = proc.analysis.getCoachMessage();
     ++dots;
+    if (proc.getRole() != shownRole) { shownRole = proc.getRole(); repaint(); }
     if (m.listening != msg.listening || m.observation != msg.observation || m.suggestion != msg.suggestion) { msg = m; repaint(); }
     else if (msg.listening && dots % 15 == 0) repaint();
 }
@@ -76,8 +91,14 @@ void VocalCoachPanel::paint (Graphics& g)
     SauceDraw::panel (g, getLocalBounds().toFloat().reduced (1), 10);
     g.setColour (SauceColours::text);
     g.strokePath (SauceDraw::icon ("coach", { 20, 12, 34, 32 }), PathStrokeType (2.0f));
-    g.setFont (SauceFonts::bold (23.0f));
-    g.drawText ("VOCAL COACH", 70, 10, 240, 36, Justification::centredLeft);
+    SauceDraw::tagText (g, "VOCAL COACH", 62, 36, 21.0f, false);
+    // the part this track plays (auto-detected; click to change)
+    const String rn = SauceProcessor::roleNames()[proc.getRole()].toUpperCase();
+    chip = { 196.0f, 16.0f, (float) getWidth() - 210.0f, 24.0f };
+    g.setColour (SauceColours::neon.withAlpha (0.22f)); g.fillRoundedRectangle (chip, 12);
+    g.setColour (SauceColours::neonHi); g.drawRoundedRectangle (chip, 12, 1.3f);
+    g.setFont (SauceFonts::bold (11.5f));
+    g.drawFittedText (rn + (proc.getRoleOverride() < 0 ? "  (auto)" : ""), chip.reduced (6, 0).toNearestInt(), Justification::centred, 1, 0.7f);
 
     auto inner = getLocalBounds().toFloat().reduced (12).withTrimmedTop (44);
     g.setColour (Colour (0xff0a0d11)); g.fillRoundedRectangle (inner, 8);
@@ -105,6 +126,21 @@ void VocalCoachPanel::paint (Graphics& g)
     g.drawFittedText (sug, box.reduced (8, 4).toNearestInt(), Justification::centredLeft, 3, 1.0f);
 }
 
+void VocalCoachPanel::mouseDown (const MouseEvent& e)
+{
+    if (! chip.contains (e.position)) return;
+    PopupMenu m;
+    m.addSectionHeader ("This track is... (the Coach gives advice for that part)");
+    m.addItem (1, "Auto-detect  (now: " + SauceProcessor::roleNames()[proc.getRole()] + ", " + proc.getRoleReason() + ")", true, proc.getRoleOverride() < 0);
+    for (int i = 0; i < 6; ++i) m.addItem (10 + i, SauceProcessor::roleNames()[i], true, proc.getRoleOverride() == i);
+    m.showMenuAsync (PopupMenu::Options().withTargetComponent (this), [this] (int r)
+    {
+        if (r == 1) proc.setRoleOverride (-1);
+        else if (r >= 10) proc.setRoleOverride (r - 10);
+        repaint();
+    });
+}
+
 //==============================================================================
 MetersPanel::MetersPanel (SauceProcessor& p, const UiState& u) : proc (p), ui (u), gain (p.apvts, ParamIDs::outGain, "GAIN", Knob::Medium)
 {
@@ -129,7 +165,7 @@ void MetersPanel::paint (Graphics& g)
 {
     SauceDraw::panel (g, getLocalBounds().toFloat().reduced (1), 10);
     g.setColour (SauceColours::text); g.setFont (SauceFonts::bold (21.0f));
-    g.drawText ("METERS", 18, 8, 200, 32, Justification::centredLeft);
+    SauceDraw::tagText (g, "METERS", 18, 32, 22.0f, false);
     const double sr = proc.getSampleRate() > 0 ? proc.getSampleRate() : 48000.0;
     g.setFont (SauceFonts::medium (13.0f)); g.setColour (shownLatency > 200 ? SauceColours::textDim : SauceColours::neonHi);
     g.drawText ("Latency " + String (jmax (0, shownLatency) * 1000.0 / sr, 1) + " ms", 104, 226, 112, 18, Justification::centred);

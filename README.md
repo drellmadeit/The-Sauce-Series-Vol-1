@@ -1,10 +1,21 @@
-# The Sauce Suite 1.4.0
+# The Sauce Suite 1.5.0
 
 An all-in-one vocal plugin for rap, melodic rap, trap-soul and R&B vocals: noise gate, key-aware pitch correction, 6-band EQ with a live spectrum, Match EQ, compressor, saturation, doubler and width, tempo-synced delay, reverb with independent ducking, final limiter, factory and user presets, and a Vocal Coach that listens to your vocal next to your beat.
 
 Formats: **VST3** (Windows, macOS, Linux) and **Audio Unit** (macOS). Built with C++17, JUCE 8.0.15 and CMake.
 
 ![The Sauce Suite](docs/screenshot-eq.png)
+
+## New in 1.5
+
+* **Fully serial chain:** every module (Gate, De-Pop, Auto Tune, EQ, Match EQ, Comp, De-Ess, Vocal FX, Delay, Reverb, Limiter) is a draggable tab, and the sound runs through them left to right.
+* **De-Esser** and **De-Pop** (plosive filter), both zero latency.
+* **Smoother Auto Tune** with a Smoothness knob that keeps your vibrato.
+* **Limiter** with Drive, Character (Clean / Punchy / Loud) and a ceiling down to -30 dB, movable anywhere.
+* **12-band EQ** with Pro-Q-style dynamic bands and a Soothe-style **resonance suppressor**.
+* **Track Link:** hear your beat or a reference from another track without sidechain routing; **drag and drop** beat and reference files.
+* **Track roles:** Lead / Hook / Ad-libs / Backgrounds / Harmonies / Doubles detection, and a Vocal Coach that gives advice for that part.
+* **943 presets**, 152 artists, each with Lead, Hook, Ad-libs and Backgrounds versions. Brighter, graffiti-style look.
 
 ## Sauce Assistant (new in 1.4)
 
@@ -49,15 +60,15 @@ Instrumental sidechain ─► analyser + Vocal Coach only (never reaches the out
 | Delay | Free time in ms or tempo sync (1/32 to 1/1, straight/dotted/triplet), feedback, low/high cut in the feedback path, stereo or ping-pong, mix, Delay Ducking. |
 | Reverb | Room, plate or hall; pre-delay, decay, damping, mix, Reverb Ducking. |
 | Limiter | Ceiling, release, gain-reduction meter (look-ahead peak limiter). |
-| Presets | 421 factory presets in 19 categories. Choosing a Genre loads its Lead preset; the Artist menu lists only artists that fit that genre and loads the artist's preset; a pop-up shows what changed. Preset list, Save As, undo/redo. Factory presets can't be overwritten. Edits you haven't saved still come back exactly when the DAW session reopens. |
+| Presets | 943 factory presets in 19 categories. Choosing a Genre loads its Lead preset; the Artist menu lists only artists that fit that genre and loads the artist's preset; a pop-up shows what changed. Preset list, Save As, undo/redo. Factory presets can't be overwritten. Edits you haven't saved still come back exactly when the DAW session reopens. |
 | Vocal Coach | Answers "What am I hearing?" and "What should I try?" from about 4 seconds of measured audio: clipping, sibilance, low-mid build-up, uneven level, low level, and vocal-vs-beat masking with the frequency range named. Shows "Listening" when there isn't enough audio. |
 
-### Factory presets (421)
+### Factory presets (943)
 
 * **19 genre categories:** Rap, Melodic Rap, Trap, Drill, Trap-Soul, R&B, Boom Bap, Pop, Afrobeats, Dancehall, Latin / Reggaeton, Gospel, Country, Rock, Indie / Alt, EDM, Lo-Fi, Podcast / Voice, FX & Creative.
 * **Every music genre** has 18 roles: Lead, Hook, Hook (Stadium), Ad-libs, Ad-libs (Phone Filter), Ad-libs (Echo Throw), Backgrounds, Backgrounds (Airy Pad), Harmonies (Wide), Doubles, Intro / Whisper, plus seven lead flavours: Clean, Dark, Bright, Spacey, Hard Tune, Vintage and Aggressive. Presets also set the chain order. Each genre's settings come from its own recipe (EQ curve, tuning style, compression, saturation, delay and reverb), so they all sound different.
 * **FX & Creative:** Telephone, Megaphone, AM Radio, Underwater, Robot, Whisper Air, Stadium Throw, Echo Out (Dub), Distorted Scream, Choir Stack, Infinite Wash, Vinyl Tape Echo.
-* **89 artist-inspired starting points**, marked **(Unofficial)** and listed under the genres that fit each artist (e.g. Drake, J. Cole, Rylo Rodriguez under Rap/Trap; Bryson Tiller, Tory Lanez, Chris Brown, SZA, Summer Walker under R&B), plus the original genre presets. Not affiliated with or endorsed by the artists.
+* **152 artist-inspired styles** (Lead, Hook, Ad-libs and Backgrounds each), marked **(Unofficial)** and listed under the genres that fit each artist (e.g. Drake, J. Cole, Rylo Rodriguez under Rap/Trap; Bryson Tiller, Tory Lanez, Chris Brown, SZA, Summer Walker under R&B), plus the original genre presets. Not affiliated with or endorsed by the artists.
 
 The full table is in [docs/FACTORY_PRESETS.md](docs/FACTORY_PRESETS.md). Use **Genre** in the header to show one genre's presets.
 
@@ -67,7 +78,7 @@ The artist-inspired presets are rough starting points based on how those artists
 
 ## Verification (what was actually tested)
 
-Version 1.4.0: **96/96 checks pass** on Linux and on the Windows build under Wine. See [docs/test-results.txt](docs/test-results.txt) and [docs/test-results-windows.txt](docs/test-results-windows.txt); the changes are listed in [CHANGELOG.md](CHANGELOG.md).
+Version 1.5.0: **130/130 checks pass** on Linux and on the Windows build under Wine. See [docs/test-results.txt](docs/test-results.txt) and [docs/test-results-windows.txt](docs/test-results-windows.txt); the changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 These checks ran on Linux (Ubuntu 24.04, GCC 13, JUCE 8.0.15, 48 kHz, 512-sample blocks). Every check feeds audio through the real `processBlock()` with the vocal on the main bus and the beat on the sidechain bus, the same way a DAW does. Full output: [docs/test-results.txt](docs/test-results.txt).
 

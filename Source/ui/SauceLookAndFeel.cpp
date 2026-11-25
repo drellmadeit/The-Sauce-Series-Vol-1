@@ -33,6 +33,139 @@ void panel (Graphics& g, Rectangle<float> r, float radius, bool glowWhite)
     // faint top sheen for the matte look
     g.setGradientFill (ColourGradient (Colours::white.withAlpha (0.035f), r.getX(), r.getY(), Colours::transparentWhite, r.getX(), r.getY() + 40, false));
     g.fillRoundedRectangle (r.reduced (1.0f), radius);
+    // sticker edge: a sprayed blue line along the top-left corner, fading out
+    if (r.getWidth() > 120 && r.getHeight() > 60)
+    {
+        Path edge;
+        edge.startNewSubPath (r.getX() + 0.5f, r.getY() + jmin (90.0f, r.getHeight() * 0.5f));
+        edge.lineTo (r.getX() + 0.5f, r.getY() + radius);
+        edge.quadraticTo (r.getX() + 0.5f, r.getY() + 0.5f, r.getX() + radius, r.getY() + 0.5f);
+        edge.lineTo (r.getX() + jmin (160.0f, r.getWidth() * 0.45f), r.getY() + 0.5f);
+        g.setGradientFill (ColourGradient (SauceColours::neonHi.withAlpha (0.9f), r.getX(), r.getY(), SauceColours::neon.withAlpha (0.0f),
+                                           r.getX() + jmin (160.0f, r.getWidth() * 0.45f), r.getY() + 60, false));
+        g.strokePath (edge, PathStrokeType (2.0f, PathStrokeType::curved, PathStrokeType::rounded));
+    }
+}
+
+static float hashf (int a, int b) { uint32_t h = (uint32_t) (a * 73856093) ^ (uint32_t) (b * 19349663); h ^= h >> 13; h *= 0x5bd1e995; h ^= h >> 15; return (float) (h & 0xffff) / 65535.0f; }
+
+float tagText (Graphics& g, const String& text, float x, float baseline, float height, bool drips, bool centred)
+{
+    const auto font = SauceFonts::brand (height);
+    GlyphArrangement ga; ga.addLineOfText (font, text, 0, 0);
+    const float width = ga.getBoundingBox (0, -1, true).getWidth() + height * 0.1f;
+    if (centred) x -= width * 0.5f;
+    Path letters; std::vector<Rectangle<float>> boxes;
+    int seed = 0; for (auto c : text) seed = seed * 31 + (int) c;
+    for (int i = 0; i < ga.getNumGlyphs(); ++i)
+    {
+        auto& gl = ga.getGlyph (i);
+        if (gl.isWhitespace()) continue;
+        Path gp; gl.createPath (gp);
+        const auto b = gp.getBounds();
+        const float ang = (hashf (seed, i) - 0.5f) * 0.16f;                // each letter leans a little differently
+        const float dy = (hashf (seed + 7, i) - 0.5f) * height * 0.08f;
+        const float sc = 1.0f + (hashf (seed + 3, i) - 0.5f) * 0.08f;
+        gp.applyTransform (AffineTransform::rotation (ang, b.getCentreX(), b.getBottom()).scaled (sc, sc, b.getCentreX(), b.getBottom()).translated (x, baseline + dy));
+        boxes.push_back (gp.getBounds());
+        letters.addPath (gp);
+    }
+    // 3D drop (extruded down-right in deep blue)
+    for (int k = 4; k >= 1; --k)
+    {
+        g.setColour (SauceColours::neonDeep.darker (0.25f * (float) k).withAlpha (0.9f));
+        Path e (letters); e.applyTransform (AffineTransform::translation (height * 0.022f * (float) k, height * 0.028f * (float) k));
+        g.fillPath (e);
+    }
+    // thick dark outline
+    g.setColour (Colour (0xff020305));
+    g.strokePath (letters, PathStrokeType (height * 0.11f, PathStrokeType::curved, PathStrokeType::rounded));
+    // drips from some letters
+    if (drips)
+        for (size_t i = 0; i < boxes.size(); ++i)
+        {
+            if (hashf (seed + 11, (int) i) > 0.42f) continue;
+            const auto& b = boxes[i];
+            const float dx = b.getX() + b.getWidth() * (0.3f + 0.4f * hashf (seed + 13, (int) i));
+            const float len = height * (0.18f + 0.45f * hashf (seed + 17, (int) i)), w = height * 0.075f;
+            Path d; d.addRoundedRectangle (dx - w * 0.5f, b.getBottom() - height * 0.08f, w, len, w * 0.5f);
+            d.addEllipse (dx - w * 0.75f, b.getBottom() - height * 0.08f + len - w * 0.9f, w * 1.5f, w * 1.6f);
+            g.setColour (Colour (0xff020305)); g.strokePath (d, PathStrokeType (height * 0.05f));
+            g.setGradientFill (ColourGradient (SauceColours::neonHi, dx, b.getBottom(), SauceColours::neon, dx, b.getBottom() + len, false));
+            g.fillPath (d);
+        }
+    // fill: white at the top melting into electric blue
+    const auto lb = letters.getBounds();
+    g.setGradientFill (ColourGradient (Colours::white, lb.getX(), lb.getY(), SauceColours::spray, lb.getX(), lb.getBottom(), false));
+    g.fillPath (letters);
+    // inner shine line + a sparkle
+    g.setColour (Colours::white.withAlpha (0.55f));
+    g.strokePath (letters, PathStrokeType (height * 0.018f));
+    if (! boxes.empty())
+    {
+        const auto& f = boxes.front();
+        const float sx = f.getX() + f.getWidth() * 0.25f, sy = f.getY() + height * 0.05f, s = height * 0.14f;
+        Path star; star.addStar ({ sx, sy }, 4, s * 0.18f, s, 0.0f);
+        g.setColour (Colours::white); g.fillPath (star);
+    }
+    return width;
+}
+
+void splatter (Graphics& g, Point<float> c, float radius, Colour col, int seed)
+{
+    Random rnd (seed);
+    for (int i = 0; i < 40; ++i)
+    {
+        const float a = rnd.nextFloat() * MathConstants<float>::twoPi, d = radius * std::pow (rnd.nextFloat(), 0.7f);
+        const float s = (1.0f - d / radius) * jmin (radius * 0.06f, 5.0f) * (0.4f + rnd.nextFloat()) + 0.6f;
+        g.setColour (col.withAlpha (0.25f + 0.55f * rnd.nextFloat()));
+        g.fillEllipse (c.x + std::cos (a) * d - s, c.y + std::sin (a) * d - s, s * 2, s * 2);
+    }
+}
+
+Image sprayWall (int w, int h)
+{
+    Image img (Image::ARGB, w, h, true);
+    Graphics g (img);
+    g.fillAll (SauceColours::bg);
+    Random rnd (1337);
+    // bricks
+    const float bh = 46, bw = 118;
+    for (int row = 0; row * bh < h; ++row)
+        for (int col = -1; col * bw < w; ++col)
+        {
+            const float x = (float) col * bw + (row % 2 ? bw * 0.5f : 0.0f), y = (float) row * bh;
+            const float v = 0.75f + 0.5f * rnd.nextFloat();
+            g.setColour (Colour::fromFloatRGBA (0.035f * v, 0.042f * v, 0.055f * v, 1.0f));
+            g.fillRoundedRectangle (x + 3, y + 3, bw - 6, bh - 6, 3);
+        }
+    // spray clouds in electric blue / cyan
+    struct Cloud { float x, y, r; Colour c; float a; };
+    const Cloud clouds[] = { { 0.10f, 0.08f, 0.34f, SauceColours::neon, 0.30f }, { 0.88f, 0.92f, 0.42f, SauceColours::neonDeep, 0.30f },
+                             { 0.62f, 0.05f, 0.24f, SauceColours::spray, 0.16f }, { 0.30f, 0.98f, 0.28f, SauceColours::neon, 0.22f },
+                             { 0.97f, 0.30f, 0.20f, SauceColours::spray, 0.14f } };
+    for (auto& cl : clouds)
+    {
+        const float cx = cl.x * (float) w, cy = cl.y * (float) h, r = cl.r * (float) w;
+        ColourGradient grad (cl.c.withAlpha (cl.a), cx, cy, cl.c.withAlpha (0.0f), cx + r, cy, true);
+        g.setGradientFill (grad); g.fillEllipse (cx - r, cy - r, r * 2, r * 2);
+        splatter (g, { cx + r * 0.35f, cy + r * 0.2f }, r * 0.45f, cl.c.brighter (0.3f), (int) (cl.x * 1000));
+    }
+    // drips running down from the top clouds
+    for (int i = 0; i < 9; ++i)
+    {
+        const float x = (float) w * (0.02f + 0.2f * rnd.nextFloat()) + (i > 4 ? (float) w * 0.5f : 0.0f);
+        const float len = 40.0f + 160.0f * rnd.nextFloat(), dw = 2.5f + 3.0f * rnd.nextFloat();
+        g.setGradientFill (ColourGradient (SauceColours::neon.withAlpha (0.35f), x, 0, SauceColours::neon.withAlpha (0.0f), x, len, false));
+        g.fillRoundedRectangle (x, 0, dw, len, dw * 0.5f);
+    }
+    // fine spray grain
+    for (int i = 0; i < w * h / 90; ++i)
+    {
+        g.setColour ((rnd.nextBool() ? SauceColours::neonHi : Colours::white).withAlpha (0.02f + 0.05f * rnd.nextFloat()));
+        g.fillRect ((float) rnd.nextInt (w), (float) rnd.nextInt (h), 1.4f, 1.4f);
+    }
+    return img;
 }
 
 void glowPath (Graphics& g, const Path& p, Colour c, float w, int glowRadius)
@@ -198,6 +331,31 @@ Path icon (const String& name, Rectangle<float> a)
             if (name == "coach") break;
         }
         if (name == "coach") { p.startNewSubPath (cx - r * 0.9f, cy - r * 0.45f); p.lineTo (cx - r * 0.9f, cy + r * 0.25f); p.lineTo (cx, cy + r * 0.65f); p.lineTo (cx + r * 0.9f, cy + r * 0.25f); p.lineTo (cx + r * 0.9f, cy - r * 0.45f); }
+    }
+    else if (name == "pop")
+    {
+        // mic grille with a burst of air hitting it
+        const float gx = x + w * 0.62f, gy = cy, gr = r * 0.55f;
+        p.addEllipse (gx - gr, gy - gr, gr * 2, gr * 2);
+        p.startNewSubPath (gx - gr * 0.6f, gy); p.lineTo (gx + gr * 0.6f, gy);
+        p.startNewSubPath (gx, gy - gr * 0.6f); p.lineTo (gx, gy + gr * 0.6f);
+        for (int k = -1; k <= 1; ++k)
+        {
+            const float yy = cy + (float) k * h * 0.26f;
+            p.startNewSubPath (x + w * 0.02f, yy + (float) k * h * 0.04f); p.lineTo (x + w * 0.24f, yy);
+        }
+    }
+    else if (name == "deess")
+    {
+        // an "S" with a small down arrow beside it
+        const float sx = x + w * 0.12f, sw = w * 0.5f;
+        p.startNewSubPath (sx + sw, y + h * 0.18f);
+        p.cubicTo (sx + sw * 0.6f, y, sx, y + h * 0.08f, sx + sw * 0.1f, y + h * 0.32f);
+        p.cubicTo (sx + sw * 0.2f, y + h * 0.52f, sx + sw, y + h * 0.48f, sx + sw * 0.95f, y + h * 0.72f);
+        p.cubicTo (sx + sw * 0.9f, y + h * 0.98f, sx + sw * 0.2f, y + h, sx, y + h * 0.82f);
+        const float ax = x + w * 0.84f;
+        p.startNewSubPath (ax, y + h * 0.2f); p.lineTo (ax, y + h * 0.85f);
+        p.startNewSubPath (ax - w * 0.1f, y + h * 0.68f); p.lineTo (ax, y + h * 0.85f); p.lineTo (ax + w * 0.1f, y + h * 0.68f);
     }
     else if (name == "chevron")
     {

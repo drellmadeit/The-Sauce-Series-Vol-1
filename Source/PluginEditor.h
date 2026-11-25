@@ -59,6 +59,7 @@ public:
     explicit SauceEditor (SauceProcessor&);
     ~SauceEditor() override;
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
     static constexpr int kBaseW = 1720, kBaseH = 920;
@@ -83,14 +84,18 @@ private:
     HeaderBar header;
     juce::OwnedArray<TabButton> tabs;
     EqPage eqPage;
-    GatePage gatePage; TunePage tunePage; MatchPage matchPage; CompPage compPage; FxPage fxPage; LimiterPage limPage;
+    GatePage gatePage; TunePage tunePage; MatchPage matchPage; CompPage compPage; FxPage fxPage; LimiterPage limPage; DeessPage deessPage; PlosivePage popPage;
+    int flashPanel = -1; double flashStart = 0;
+    juce::Image wall;
+    static constexpr int kNumTabs = 11, kTabX0 = 20, kTabSlot = 122;
+    static constexpr const char* kTabLetters = "GTEMCSLDYRP";   // tab index -> chain letter
     DelayPanel delay; ReverbPanel reverb;
     PresetRoutingPanel routing; VocalCoachPanel coach; MetersPanel metersPanel; BottomBar bottom;
     int current = 2; bool eqFull = false;
     // vocal chain order (drag the tabs)
     juce::String shownOrder, workingOrder; int draggingTab = -1; float dragX = 0, dragGrab = 0;
     void layoutTabs();
-    static int tabForLetter (juce::juce_wchar c) { return juce::String ("GTEMCS").indexOfChar (c); }
+    static int tabForLetter (juce::juce_wchar c) { return juce::String (kTabLetters).indexOfChar (c); }
     PresetToast toast; juce::String lastToastName; bool lastToastDirty = true;
     AssistantPanel assistantPanel;
 public:

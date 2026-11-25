@@ -4,7 +4,7 @@ cmake_minimum_required (VERSION 3.22)
 set (CMAKE_OSX_DEPLOYMENT_TARGET "10.13" CACHE STRING "Minimum macOS version")
 set (CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "Universal binary")
 
-project (TheSauceSuite VERSION 1.4.0 LANGUAGES C CXX)
+project (TheSauceSuite VERSION 1.5.0 LANGUAGES C CXX)
 
 set (CMAKE_CXX_STANDARD 17)
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -97,7 +97,8 @@ target_compile_definitions (TheSauceSuite
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
         JUCE_DISPLAY_SPLASH_SCREEN=0
-        JUCE_REPORT_APP_USAGE=0)
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_USE_MP3AUDIOFORMAT=1)
 
 target_link_libraries (TheSauceSuite
     PRIVATE
@@ -133,8 +134,8 @@ if (SAUCE_BUILD_TESTS)
     target_include_directories (SauceTests PRIVATE Source)
     target_compile_definitions (SauceTests PRIVATE
         JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="The Sauce Suite"
-        JucePlugin_Manufacturer="Drellmadeit" JucePlugin_VersionString="1.4.0"
-        SAUCE_TEST_BUILD=1 JUCE_MODAL_LOOPS_PERMITTED=1)
+        JucePlugin_Manufacturer="Drellmadeit" JucePlugin_VersionString="1.5.0"
+        SAUCE_TEST_BUILD=1 JUCE_MODAL_LOOPS_PERMITTED=1 JUCE_USE_MP3AUDIOFORMAT=1)
     target_link_libraries (SauceTests PRIVATE
         SauceAssets
         juce::juce_audio_processors

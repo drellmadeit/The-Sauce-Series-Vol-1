@@ -3,13 +3,18 @@
 #include "../PluginProcessor.h"
 
 /** The Sauce Assistant window: target -> listen -> apply, then A/B and feedback. */
-class AssistantPanel : public juce::Component, private juce::Timer
+class AssistantPanel : public juce::Component, public juce::FileDragAndDropTarget, private juce::Timer
 {
 public:
     explicit AssistantPanel (SauceProcessor&);
     void paint (juce::Graphics&) override;
     void resized() override;
     void open();
+    bool isInterestedInFileDrag (const juce::StringArray& files) override;
+    void fileDragEnter (const juce::StringArray&, int, int) override { dragOver = true; repaint(); }
+    void fileDragExit (const juce::StringArray&) override { dragOver = false; repaint(); }
+    void filesDropped (const juce::StringArray& files, int, int) override;
+    void loadBeatFile (const juce::File&);
     std::function<void()> onClose, onRoutingHelp;
 
 private:
@@ -25,5 +30,8 @@ private:
     Segmented ab { "Before", "After" };
     juce::OwnedArray<juce::TextButton> feedback;
     sauce::AssistantInput lastIn;
-    juce::String guess;
+    juce::String guess, fileStatus;
+    bool dragOver = false;
+    juce::TextButton linkBtn { "Link a track..." }, fileBtn { "Load beat file..." };
+    std::unique_ptr<juce::FileChooser> chooser;
 };

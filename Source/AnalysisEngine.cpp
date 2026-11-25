@@ -10,6 +10,7 @@ AnalysisEngine::AnalysisEngine (SauceProcessor& p) : Thread ("Sauce Analysis"), 
     vocHist.assign (4096, 0.0f); beatHist.assign (4096, 0.0f);
     vocDisp.assign (kDisplayPoints, -120.0f); beatDisp.assign (kDisplayPoints, -120.0f);
     formats.registerBasicFormats();
+    accMine.voicedOnly = accRef.voicedOnly = true;            // smart Match EQ: sung notes only
 }
 
 AnalysisEngine::~AnalysisEngine() { stop(); }
@@ -105,6 +106,16 @@ void AnalysisEngine::pump()
 
         // ---- Vocal Coach: beat only counts when routed as Instrumental and actually playing ----
         const bool beatForCoach = instrumentalRole && scLevelDb.load() > -60.0f;
+        {
+            sauce::VocalCoach::Context cx;
+            cx.role = proc.getRole();
+            cx.tuneOn = proc.reader.get (ParamIDs::tuneOn) > 0.5f;
+            cx.stereoFx = proc.reader.get (ParamIDs::dblOn) > 0.5f || proc.reader.get (ParamIDs::wideOn) > 0.5f;
+            cx.deessOn = proc.reader.get (ParamIDs::deessOn) > 0.5f;
+            const bool lc = proc.reader.get (ParamIDs::band (0, "on")) > 0.5f && (int) proc.reader.get (ParamIDs::band (0, "type")) == 3;
+            cx.hpfHz = lc ? proc.reader.get (ParamIDs::band (0, "freq")) : 20.0f;
+            coach.setContext (cx);
+        }
         coach.feed (in, lead, out, beatForCoach ? sc : nullptr, avail, ceilLin, limOn);
         keyDetector.feed (in, beatForCoach ? sc : nullptr, avail);     // raw vocal pitch (before tuning) + beat
 
@@ -188,7 +199,7 @@ bool AnalysisEngine::loadReferenceFile (const File& f, String& error)
     std::vector<float> mono ((size_t) maxLen, 0.0f);
     for (int c = 0; c < buf.getNumChannels(); ++c)
         for (int i = 0; i < (int) maxLen; ++i) mono[(size_t) i] += buf.getSample (c, i) / (float) buf.getNumChannels();
-    sauce::SpectrumAccumulator acc;
+    sauce::SpectrumAccumulator acc; acc.voicedOnly = true;
     acc.feed (mono.data(), (int) mono.size(), r->sampleRate);
     if (! acc.hasData()) { error = "That file is too quiet or too short to analyse."; return false; }
     const ScopedLock sl (lock);
@@ -293,12 +304,55 @@ void AnalysisEngine::assistantStart()
     assistListening.store (true);
 }
 
+bool AnalysisEngine::loadBeatFile (const File& f, String& error)
+{
+    std::unique_ptr<AudioFormatReader> r (formats.createReaderFor (f));
+    if (r == nullptr) { error = "Couldn't read that file. Use WAV, AIFF, FLAC, OGG or MP3."; return false; }
+    const auto len = (int) jmin<double> ((double) r->lengthInSamples, r->sampleRate * 600.0);
+    AudioBuffer<float> buf ((int) r->numChannels, len);
+    r->read (&buf, 0, len, 0, true, true);
+    std::vector<float> mono ((size_t) len, 0.0f);
+    for (int c = 0; c < buf.getNumChannels(); ++c)
+        for (int i = 0; i < len; ++i) mono[(size_t) i] += buf.getSample (c, i) / (float) buf.getNumChannels();
+    sauce::SpectrumAccumulator acc;
+    acc.feed (mono.data(), (int) mono.size(), r->sampleRate);
+    if (! acc.hasData()) { error = "That file is too quiet or too short to analyse."; return false; }
+    double pow = 0; float pk = 0; int64 n = 0;
+    for (float v : mono) { if (std::abs (v) > 1e-4f) { pow += (double) v * v; ++n; } pk = jmax (pk, std::abs (v)); }
+    // key from the beat's chords (resampled to the engine rate the detector expects)
+    sauce::KeyDetector kd; kd.prepare (sr);
+    {
+        const double ratio = r->sampleRate / sr;
+        std::vector<float> rs ((size_t) ((double) len / ratio)), silence (4096, 0.0f);
+        LagrangeInterpolator li; li.process (ratio, mono.data(), rs.data(), (int) rs.size());
+        for (size_t s = 0; s < rs.size(); s += 4096)
+        {
+            const int m = (int) jmin<size_t> (4096, rs.size() - s);
+            kd.feed (silence.data(), rs.data() + s, m);
+        }
+    }
+    const ScopedLock sl (lock);
+    fileBeatSpec = acc.averageDb(); fileBeatSec = acc.seconds (r->sampleRate);
+    fileBeatRms = n > 0 ? sauce::gainToDb ((float) std::sqrt (pow / (double) n), -100.0f) : -100.0f;
+    fileBeatPeak = sauce::gainToDb (pk, -100.0f);
+    fileBeatName = f.getFileName();
+    fileKey = kd.estimate();
+    return true;
+}
+
 sauce::AssistantInput AnalysisEngine::assistantSnapshot() const
 {
     const ScopedLock sl (lock);
     sauce::AssistantInput in;
     in.beatSeconds = assistBeat.seconds (sr); in.vocalSeconds = assistVocal.seconds (sr);
     in.hasBeat = in.beatSeconds >= 4.0 && assistBeatN > 0;
+    if (! in.hasBeat && ! fileBeatSpec.empty())
+    {
+        // no live beat heard: use the dropped beat file
+        in.hasBeat = true; in.beatSeconds = fileBeatSec; in.beatSpec = fileBeatSpec;
+        in.beatRmsDb = fileBeatRms; in.beatPeakDb = fileBeatPeak; in.beatFromFile = true;
+        if (fileKey.valid) { in.keyValid = true; in.key = fileKey.key; in.minor = fileKey.minor; }
+    }
     in.hasVocal = in.vocalSeconds >= 3.0;
     if (in.hasBeat)
     {

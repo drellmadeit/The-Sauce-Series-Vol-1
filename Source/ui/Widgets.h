@@ -32,6 +32,7 @@ public:
         addAndMakeVisible (label);
         att = std::make_unique<SliderAtt> (s, paramId, slider);
     }
+    void setTooltip (const juce::String& t) { slider.setTooltip (t + " (double-click to reset)"); }
     void resized() override
     {
         auto b = getLocalBounds();
@@ -157,7 +158,5 @@ inline void drawTitle (juce::Graphics& g, const juce::String& icon, const juce::
         g.setColour (SauceColours::text);
         g.strokePath (SauceDraw::icon (icon, iconArea), juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
-    g.setColour (SauceColours::text);
-    g.setFont (SauceFonts::bold (size));
-    g.drawText (title, juce::Rectangle<float> (textPos.x, textPos.y, 400, size * 1.3f), juce::Justification::centredLeft);
+    SauceDraw::tagText (g, title, textPos.x, textPos.y + size * 0.98f, size * 1.05f);
 }
